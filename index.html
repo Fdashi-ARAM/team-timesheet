@@ -392,11 +392,24 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
   }
   const openedAsFile = location.protocol === "file:";
   const embedded = /Electron\//.test(navigator.userAgent) || window.top !== window.self;
-  async function readText(dir, name) { const fh = await dir.getFileHandle(name); return (await fh.getFile()).text(); }
-  async function writeText(dir, name, text) {
-    const fh = await dir.getFileHandle(name, { create: true });
-    const w = await fh.createWritable(); await w.write(text); await w.close();
+  /* Shared drives can report a file as busy or "changed" for a moment right after it's saved (antivirus scans on the
+     file server, network caching), so reads and writes retry a few times before giving up. */
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const TRANSIENT = new Set(["NotReadableError", "NoModificationAllowedError", "InvalidStateError", "InvalidModificationError"]);
+  async function retry(fn) {
+    const waits = [150, 400, 800, 1500];
+    for (let i = 0; ; i++) {
+      try { return await fn(); }
+      catch (e) { if (!TRANSIENT.has(e.name) || i >= waits.length) throw e; await sleep(waits[i]); }
+    }
   }
+  const readText = (dir, name) => retry(async () => { const fh = await dir.getFileHandle(name); return (await fh.getFile()).text(); });
+  const writeText = (dir, name, text) => retry(async () => {
+    const fh = await dir.getFileHandle(name, { create: true });
+    const w = await fh.createWritable();
+    try { await w.write(text); await w.close(); }
+    catch (e) { try { await w.abort(); } catch { /* already closed */ } throw e; }
+  });
   function friendly(e) {
     if (!e) return "Something went wrong.";
     if (/activation|user gesture/i.test(e.message || "")) return "The browser needs a click to do that. Click the button again.";
@@ -435,15 +448,24 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
     try { return normalize(JSON.parse(await readText(state.me, DATA_FILE))); }
     catch (e) { if (e.name === "NotFoundError") return null; throw e; }
   }
-  /* Every change re-reads the file first, then applies the change and saves, so two open windows never undo each other. */
+  /* Every change re-reads the file first, then applies the change and saves, so two open windows never undo each other.
+     If the drive won't give the file back just then, or gives back an older copy, the copy already open in this page is
+     used instead: a hiccup must never block a save, and must never replace the timesheet with an empty or older one. */
+  const clone = (x) => JSON.parse(JSON.stringify(x));
+  const openCopy = () => (state.data && state.dataOwner === state.me ? state.data : null);
+  function keep(d) { state.data = d; state.dataOwner = state.me; }
   async function mutate(fn) {
-    let d;
-    try { d = (await loadMine()) || newData(state.me.name); } catch (e) { throw new Error(friendly(e)); }
+    let d = null;
+    const open = openCopy();
+    try { d = await loadMine(); }
+    catch (e) { if (!open) throw new Error(`Couldn't read your timesheet. ${friendly(e)} (${techDetails(e)})`); }
+    if (open && (!d || d.revision < open.revision)) d = clone(open);
+    if (!d) d = newData(state.me.name);
     const result = fn(d);
     d.revision += 1; d.savedAt = new Date().toISOString();
     try { await writeText(state.me, DATA_FILE, JSON.stringify(d, null, 1)); }
-    catch (e) { throw new Error("Couldn't save to your folder. " + friendly(e)); }
-    state.data = d;
+    catch (e) { throw new Error(`Couldn't save to your folder. ${friendly(e)} (${techDetails(e)})`); }
+    keep(d);
     // The CSV copies are for Excel. If one is open in Excel (which locks it), the save itself has still worked.
     const stale = [];
     for (const [name, make] of [["entries.csv", entriesCsv], ["calls.csv", callsCsv]]) {
@@ -462,6 +484,12 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
     for await (const [n, h] of dir.entries()) if (h.kind === "file" && /^timesheet-\d{4}-\d{2}-\d{2}\.json$/.test(n)) names.push(n);
     names.sort();
     for (const old of names.slice(0, Math.max(0, names.length - 30))) { try { await dir.removeEntry(old); } catch { /* keep */ } }
+  }
+  /* Pick up saves from other windows. If the drive is busy for a moment, carry on with the copy already open. */
+  async function refreshMine() {
+    const open = openCopy();
+    try { const d = await loadMine(); if (d && (!open || d.revision >= open.revision)) keep(d); }
+    catch (e) { if (!open) throw e; }
   }
   const catName = (d, id) => (d.categories.find((c) => c.id === id) || { name: "(removed)" }).name;
 
@@ -637,7 +665,7 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
       el("nav", { class: "tabs", "aria-label": "Sections" }, nav.map(([key, label]) => el("a", { href: `#/${key}`, "aria-current": key === view ? "page" : null }, label))),
       el("div", { class: "spacer" }),
       el("span", { class: "who", title: "The folder this window is using" }, state.me ? `${state.data ? state.data.person : state.me.name}` : "Team view"),
-      el("button", { type: "button", class: "btn ghost", on: { click: () => { state.me = null; state.team = null; state.data = null; state.people = null; history.replaceState(null, "", location.pathname + location.search); route(); } } }, "Switch folder"));
+      el("button", { type: "button", class: "btn ghost", on: { click: () => { state.me = null; state.team = null; state.data = null; state.dataOwner = null; state.people = null; history.replaceState(null, "", location.pathname + location.search); route(); } } }, "Switch folder"));
     const page = el("main", { class: "page" }, el("div", { class: "empty" }, "Loading…"));
     app.replaceChildren(bar, page);
     return page;
@@ -717,7 +745,7 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
         state.me = h;
         let d = await loadMine();
         let fresh = false;
-        if (!d) { progress(`Starting your timesheet in “${h.name}”`); state.data = null; await mutate(() => {}); fresh = true; } else state.data = d;
+        if (!d) { progress(`Starting your timesheet in “${h.name}”`); state.data = null; await mutate(() => {}); fresh = true; } else keep(d);
         remember("me", h); state.saved.me = h;
         location.hash = fresh ? "#/categories" : "#/week"; route();
         if (fresh) toast(`Started your timesheet in “${h.name}”. Add the kinds of work you track, then go to My week.`);
@@ -824,7 +852,7 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
 
   // ------------------------------------------------------------------ My week
   async function viewWeek(page) {
-    try { const d = await loadMine(); if (d) state.data = d; } catch (e) { toast(friendly(e), true); }
+    await refreshMine();
     const d = state.data, wk = state.week, s = personal(d, wk);
     const active = d.categories.filter((c) => !c.archived);
     const reload = () => viewWeek(page).catch((e) => toast(e.message, true));
@@ -836,7 +864,7 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
     const nCats = s.categories.filter((c) => c.minutes > 0).length;
     const entries = d.entries.filter((e) => e.date >= iso(wk) && e.date <= iso(addDays(wk, 6))).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (a.at || 0) - (b.at || 0)));
     page.replaceChildren(
-      pageHead("My week", `${d.person}. Saved to your folder “${state.me.name}”.`, weekNav(reload)),
+      pageHead("My week", `${d.person}. Saved to your folder “${state.me.name}”${d.savedAt ? `, last saved at ${new Date(d.savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}.`, weekNav(reload)),
       el("div", { class: "tiles" },
         tile("My hours", hdec(s.total), nCats ? `Across ${nCats} ${nCats === 1 ? "category" : "categories"}` : "Nothing logged yet"),
         tile("Research", hdec(s.research), s.total ? `${pct(s.research, s.total)} of your week` : "Shared with the team"),
@@ -970,7 +998,7 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
 
   // ------------------------------------------------------------------ Earnings calls
   async function viewCalls(page) {
-    try { const d = await loadMine(); if (d) state.data = d; } catch (e) { toast(friendly(e), true); }
+    await refreshMine();
     const d = state.data, reload = () => viewCalls(page).catch((e) => toast(e.message, true));
     const calls = sortCalls(d.calls), open = calls.filter((c) => !c.sent);
     const stock = el("input", { type: "text", maxlength: 40, placeholder: "e.g. AAPL", id: "call-stock" });
@@ -1020,7 +1048,7 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
 
   // ------------------------------------------------------------------ Categories
   async function viewCategories(page) {
-    try { const d = await loadMine(); if (d) state.data = d; } catch (e) { toast(friendly(e), true); }
+    await refreshMine();
     const d = state.data, reload = () => viewCategories(page).catch((e) => toast(e.message, true));
     const used = (id) => d.entries.filter((e) => e.cat === id).length;
     const active = d.categories.filter((c) => !c.archived), archived = d.categories.filter((c) => c.archived);
@@ -1206,7 +1234,8 @@ in
   // Hook for automated tests: lets a test harness hand in folders without the browser's folder picker.
   window.__teamTimesheetUseFolders = async (me, teamFolder) => {
     state.me = me || null; state.team = teamFolder || null;
-    if (me) state.data = (await loadMine()) || (await mutate(() => {}), state.data);
+    state.data = null; state.dataOwner = null;
+    if (me) { const d = await loadMine(); if (d) keep(d); else await mutate(() => {}); }
     if (teamFolder) await loadTeam();
     route();
   };
