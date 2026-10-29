@@ -258,6 +258,45 @@ ol.steps b { color: var(--text); font-weight: 600; }
 .notice.bad b { color: var(--alert); }
 .dropzone { border: 1.5px dashed rgba(255, 255, 255, 0.18); border-radius: 14px; padding: 14px; text-align: center; color: var(--text-3); font-size: 13px; }
 .dropzone.over { border-color: var(--accent-text); color: var(--text); background: var(--accent-soft); }
+/* ---------- analytics */
+.pdot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 8px; vertical-align: 0; flex: none; }
+.indent { padding-left: 17px; }
+.card-tools { display: flex; align-items: center; gap: 10px; }
+.btn.tiny { min-height: 28px; padding: 4px 10px; font-size: 12px; }
+.seg { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; border-radius: 14px; background: rgba(255, 255, 255, 0.05); }
+.seg button { appearance: none; border: 0; background: transparent; color: var(--text-2); font: inherit; font-size: 13px; font-weight: 500;
+  padding: 7px 12px; border-radius: 10px; cursor: pointer; white-space: nowrap; }
+.seg button:hover { color: var(--text); }
+.seg button[aria-pressed="true"] { background: rgba(255, 255, 255, 0.12); color: var(--text); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14); }
+.viz { display: grid; gap: 12px; }
+.legend.line i { width: 14px; height: 2px; border-radius: 1px; vertical-align: 3px; }
+svg.chart rect.hit { fill: transparent; cursor: crosshair; outline: none; }
+svg.chart g.col rect.hit { cursor: default; }
+svg.chart g.col.on path { filter: brightness(1.22); }
+svg.chart text.cap { fill: var(--text-2); font-size: 10.5px; }
+svg.chart path.line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+svg.chart circle.end { stroke-width: 2; }
+svg.chart text.endlab { fill: var(--text-2); font-size: 11.5px; }
+svg.chart line.cross { stroke: rgba(255, 255, 255, 0.28); stroke-width: 1; }
+.hbar .name { display: flex; align-items: center; }
+.hbar .track span + span { margin-left: 2px; }
+.hbar .track span.lite { opacity: 0.38; }
+.hbar:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 4px; border-radius: 6px; }
+.hbar.on .track span { filter: brightness(1.18); }
+.tbl.heat td.cell { color: var(--text); border-left: 2px solid transparent; background-clip: padding-box; }
+.tbl.heat th, .tbl.heat td { padding-left: 10px; padding-right: 10px; }
+.alert-text { color: var(--alert); }
+.tbl td.strong { white-space: nowrap; }
+.tbl.compact th, .tbl.compact td { padding-left: 8px; padding-right: 8px; }
+.tbl.compact th:first-child, .tbl.compact td:first-child { padding-left: 0; }
+.viz-tip { position: fixed; z-index: 60; pointer-events: none; min-width: 140px; max-width: 260px; padding: 10px 12px; border-radius: 12px;
+  background: rgba(24, 29, 46, 0.96); border: 1px solid var(--rim); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5); font-size: 12.5px; }
+.viz-tip .t { color: var(--text-2); font-size: 11.5px; margin-bottom: 6px; }
+.viz-tip .r { display: grid; grid-template-columns: 14px auto 1fr; gap: 8px; align-items: center; padding: 2px 0; }
+.viz-tip .r i { width: 14px; height: 2px; border-radius: 1px; }
+.viz-tip .r b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.viz-tip .r span { color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.viz-tip .f { color: var(--text-3); margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--hair); }
 
 </style>
 </head>
@@ -351,7 +390,6 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
   const today = () => new Date();
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   const isShared = (name) => String(name || "").trim().toLowerCase() === "research";
-  const SHADES = ["#0a84ff", "#4da3ff", "#8cc4ff", "#c4dfff", "#2f6fd6", "#6f9fe8", "#a9c8f5", "#dbe9ff"];
   const ACCENT = "#0a84ff", SILVER = "#aeb4c2";
 
   // ------------------------------------------------------------------ folders (File System Access API)
@@ -433,7 +471,7 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
   function newData(folderName) {
     const name = String(folderName || "Me").replace(/[_-]+/g, " ").trim() || "Me";
     const cats = ["Research"];
-    return { app: "team-timesheet", version: 1, person: name, revision: 0, savedAt: null,
+    return { app: "team-timesheet", version: 1, person: name, revision: 0, savedAt: null, createdAt: new Date().toISOString(),
              categories: cats.map((n) => ({ id: uid(), name: n, target: null, archived: false })), entries: [], timer: null, calls: [] };
   }
   function normalize(d) {
@@ -442,6 +480,10 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
     d.entries = Array.isArray(d.entries) ? d.entries.filter((e) => e && e.id && /^\d{4}-\d{2}-\d{2}$/.test(e.date) && e.minutes > 0) : [];
     d.calls = Array.isArray(d.calls) ? d.calls.filter((c) => c && c.id && c.stock) : [];
     d.revision = Number(d.revision) || 0; d.person = d.person || "Me"; d.timer = d.timer || null;
+    if (!d.createdAt) {   // timesheets from before this was recorded: use the first entry ever made
+      const first = d.entries.reduce((m, e) => (e.at && e.at < m ? e.at : m), Infinity);
+      d.createdAt = Number.isFinite(first) ? new Date(first).toISOString() : null;
+    }
     return d;
   }
   async function loadMine() {
@@ -601,37 +643,177 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
   }
 
   // ------------------------------------------------------------------ charts
-  function niceTicks(max) {
-    const steps = [0.25, 0.5, 1, 2, 5, 10, 20, 25, 50, 100, 200, 500];
-    const step = steps.find((s) => max / s <= 5) || 1000;
+  /* Chart rules: one colour per person (fixed order, never cycled), thin marks with a 2px gap between stacked parts,
+     values on hover and keyboard focus, text always in text colours, and every chart can switch to a table. */
+  const PERSON_COLORS = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"];
+  const OTHER_COLOR = "#8e8e96";
+  const SURFACE = "#121627";
+  /* Colours follow the person: ordered by when each timesheet was started, so adding someone never repaints the others. */
+  function personColors(people) {
+    const order = [...people].sort((a, b) => (a.data.createdAt || "9999").localeCompare(b.data.createdAt || "9999") || a.data.person.localeCompare(b.data.person));
+    const map = new Map();
+    order.forEach((p, i) => map.set(p.data.person, i < PERSON_COLORS.length ? PERSON_COLORS[i] : OTHER_COLOR));
+    return map;
+  }
+  /* A person's categories keep the colour of their place in the list, so archiving one never repaints the rest. */
+  const categoryColors = (d) => new Map(d.categories.map((c, i) => [c.id, i < PERSON_COLORS.length ? PERSON_COLORS[i] : OTHER_COLOR]));
+  const fmtH = (v) => (Math.round(v * 10) / 10).toLocaleString("en-US", { maximumFractionDigits: 1 });
+  const dot = (color) => el("i", { class: "pdot", style: `background:${color}`, "aria-hidden": "true" });
+
+  // One floating readout shared by every chart. Values lead, names follow.
+  const tipEl = el("div", { class: "viz-tip", role: "tooltip", hidden: true });
+  document.body.append(tipEl);
+  function showTip(x, y, title, rows, foot) {
+    tipEl.replaceChildren();
+    add(tipEl, [el("div", { class: "t" }, title), rows.map(([name, color, value]) => el("div", { class: "r" }, el("i", { style: `background:${color}` }), el("b", {}, value), el("span", {}, name))),
+      foot ? el("div", { class: "f" }, foot) : null]);
+    tipEl.hidden = false;
+    const w = tipEl.offsetWidth, h = tipEl.offsetHeight;
+    let left = x + 14, top = y + 14;
+    if (left + w > innerWidth - 8) left = x - w - 14;
+    if (top + h > innerHeight - 8) top = y - h - 14;
+    tipEl.style.left = `${Math.max(8, left)}px`; tipEl.style.top = `${Math.max(8, top)}px`;
+  }
+  const hideTip = () => { tipEl.hidden = true; };
+  function bindTip(target, lift, content) {
+    const on = (x, y) => { const [title, rows, foot] = content(); showTip(x, y, title, rows, foot); if (lift) lift.classList.add("on"); };
+    const off = () => { hideTip(); if (lift) lift.classList.remove("on"); };
+    target.addEventListener("pointermove", (e) => on(e.clientX, e.clientY));
+    target.addEventListener("pointerleave", off);
+    target.addEventListener("focus", () => { const r = target.getBoundingClientRect(); on(r.left + r.width / 2, r.top); });
+    target.addEventListener("blur", off);
+  }
+
+  function niceTicks(max, whole = false) {
+    const steps = [0.25, 0.5, 1, 2, 5, 10, 20, 25, 50, 100, 200, 500, 1000].filter((x) => !whole || x >= 1);
+    const step = steps.find((s) => max / s <= 5) || 2000;
     const top = Math.max(step, Math.ceil(max / step) * step);
     const out = []; for (let v = 0; v <= top + 1e-9; v += step) out.push(+v.toFixed(2));
     return out;
   }
-  function columnChart(labels, series, { stacked = true, height = 230 } = {}) {
-    const W = 640, H = height, L = 40, R = 8, T = 10, B = 28;
-    const totals = labels.map((_, i) => stacked ? series.reduce((s, se) => s + (se.values[i] || 0), 0) : Math.max(0, ...series.map((se) => se.values[i] || 0)));
-    const ticks = niceTicks(Math.max(0.0001, ...totals)), top = ticks[ticks.length - 1];
-    const pw = W - L - R, ph = H - T - B, bw = pw / labels.length, barW = Math.min(46, bw * 0.58);
+  // Stacked columns. Totals sit on the caps (when there's room); each column's parts are in its readout.
+  function columnChart(labels, series, { height = 230, caps = null, unit = "h", fmt = fmtH, whole = false } = {}) {
+    const showCaps = caps ?? labels.length <= 13;
+    const W = 640, H = height, L = 40, R = 8, T = showCaps ? 22 : 10, B = 28;
+    const totals = labels.map((_, i) => series.reduce((s, se) => s + (se.values[i] || 0), 0));
+    const ticks = niceTicks(Math.max(0.0001, ...totals), whole), top = ticks[ticks.length - 1];
+    const pw = W - L - R, ph = H - T - B, bw = pw / Math.max(1, labels.length), barW = Math.min(24, bw * 0.6);
     const y = (v) => T + ph - (v / top) * ph;
-    const g = svg("svg", { class: "chart", viewBox: `0 0 ${W} ${H}`, role: "img" });
-    for (const t of ticks) g.append(svg("line", { class: t === 0 ? "base" : "grid", x1: L, x2: W - R, y1: y(t), y2: y(t) }), svg("text", { x: L - 8, y: y(t) + 4, "text-anchor": "end" }, String(t)));
+    const g = svg("svg", { class: "chart", viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": `Column chart: ${series.map((s) => s.name).join(", ")}` });
+    for (const t of ticks) g.append(svg("line", { class: t === 0 ? "base" : "grid", x1: L, x2: W - R, y1: y(t), y2: y(t) }), svg("text", { x: L - 8, y: y(t) + 4, "text-anchor": "end" }, fmt(t)));
+    const step = Math.ceil(labels.length / 13);
     labels.forEach((lab, i) => {
       const x = L + i * bw + (bw - barW) / 2; let base = 0;
+      const col = svg("g", { class: "col" });
       const vals = series.map((se) => se.values[i] || 0);
-      const last = vals.reduce((acc, v, k) => (v > 0 ? k : acc), -1);
-      series.forEach((se, k) => {
-        const v = vals[k]; if (v <= 0) return;
-        const y0 = y(base + v), y1 = y(base), r = k === last ? Math.min(5, barW / 2, y1 - y0) : 0;
-        g.append(svg("path", { d: `M${x},${y1} V${y0 + r} Q${x},${y0} ${x + r},${y0} H${x + barW - r} Q${x + barW},${y0} ${x + barW},${y0 + r} V${y1} Z`, fill: se.color },
-          svg("title", {}, `${lab} · ${se.name}: ${v.toFixed(2)} h`)));
+      const lastK = vals.reduce((acc, v, k) => (v > 0 ? k : acc), -1);
+      vals.forEach((v, k) => {
+        if (v <= 0) return;
+        const y1 = y(base) - (base > 0 ? 2 : 0), y0 = y(base + v);   // 2px gap between stacked parts
         base += v;
+        if (y1 - y0 < 0.75) return;
+        const r = k === lastK ? Math.min(4, barW / 2, y1 - y0) : 0;   // rounded data end, square at the baseline
+        col.append(svg("path", { d: `M${x},${y1} V${y0 + r} Q${x},${y0} ${x + r},${y0} H${x + barW - r} Q${x + barW},${y0} ${x + barW},${y0 + r} V${y1} Z`, fill: series[k].color }));
       });
-      g.append(svg("g", { class: "x" }, svg("text", { x: L + i * bw + bw / 2, y: H - 8, "text-anchor": "middle" }, lab)));
+      if (showCaps && totals[i] > 0) col.append(svg("text", { class: "cap", x: x + barW / 2, y: y(totals[i]) - 6, "text-anchor": "middle" }, fmt(totals[i])));
+      const hit = svg("rect", { class: "hit", x: L + i * bw, y: T - 4, width: bw, height: ph + 4, tabindex: 0, "aria-label": `${lab}: ${fmt(totals[i])} ${unit}` });
+      bindTip(hit, col, () => [lab, series.map((se, k) => [se.name, se.color, `${fmt(vals[k])} ${unit}`]).filter((r, k) => series.length === 1 || vals[k] > 0),
+        series.length > 1 ? `Total ${fmt(totals[i])} ${unit}` : null]);
+      col.append(hit);
+      g.append(col);
+      if (i % step === 0) g.append(svg("g", { class: "x" }, svg("text", { x: L + i * bw + bw / 2, y: H - 8, "text-anchor": "middle" }, lab)));
     });
     return g;
   }
-  const legend = (items) => el("div", { class: "legend" }, items.map(([name, color]) => el("span", {}, el("i", { style: `background:${color}` }), name)));
+  // Lines with a crosshair that snaps to the nearest point and reads out every series there.
+  function lineChart(labels, series, { height = 250, unit = "h", fmt = fmtH } = {}) {
+    const ends = series.map((s) => s.values[s.values.length - 1] || 0);
+    const W = 640, H = height, L = 40, T = 12, B = 28;
+    const maxV = Math.max(0.0001, ...series.flatMap((s) => s.values));
+    const ticks = niceTicks(maxV), top = ticks[ticks.length - 1];
+    // Direct labels at the line ends only when there are few lines and their ends don't crowd; otherwise legend + readout.
+    const ph = H - T - B, yv = (v) => T + ph - (v / top) * ph;
+    const endYs = ends.map(yv).sort((a, b) => a - b);
+    const direct = series.length > 1 && series.length <= 4 && endYs.every((v, i) => i === 0 || v - endYs[i - 1] >= 13);
+    const R = direct ? 96 : 14, pw = W - L - R;
+    const xAt = (i) => (labels.length === 1 ? L + pw / 2 : L + (i / (labels.length - 1)) * pw);
+    const g = svg("svg", { class: "chart", viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": `Line chart: ${series.map((s) => s.name).join(", ")}` });
+    for (const t of ticks) g.append(svg("line", { class: t === 0 ? "base" : "grid", x1: L, x2: W - R, y1: yv(t), y2: yv(t) }), svg("text", { x: L - 8, y: yv(t) + 4, "text-anchor": "end" }, fmt(t)));
+    const step = Math.ceil(labels.length / 9);
+    labels.forEach((lab, i) => { if (i % step === 0 || i === labels.length - 1) g.append(svg("g", { class: "x" }, svg("text", { x: xAt(i), y: H - 8, "text-anchor": "middle" }, lab))); });
+    for (const s of series) {
+      g.append(svg("path", { class: "line", d: s.values.map((v, i) => `${i ? "L" : "M"}${xAt(i).toFixed(1)},${yv(v || 0).toFixed(1)}`).join(" "), stroke: s.color }));
+      const li = s.values.length - 1;
+      g.append(svg("circle", { class: "end", cx: xAt(li), cy: yv(s.values[li] || 0), r: 4, fill: s.color, stroke: SURFACE }));
+      if (direct) g.append(svg("text", { class: "endlab", x: xAt(li) + 10, y: yv(s.values[li] || 0) + 4 }, s.name));
+    }
+    const cross = svg("line", { class: "cross", x1: 0, x2: 0, y1: T, y2: T + ph, visibility: "hidden" });
+    const marks = svg("g", { visibility: "hidden" }, series.map((s) => svg("circle", { r: 4, fill: s.color, stroke: SURFACE, class: "end" })));
+    g.append(cross, marks);
+    let cur = labels.length - 1;
+    const place = (i) => {
+      cur = Math.max(0, Math.min(labels.length - 1, i));
+      cross.setAttribute("x1", xAt(cur)); cross.setAttribute("x2", xAt(cur)); cross.setAttribute("visibility", "visible");
+      [...marks.children].forEach((c, k) => { c.setAttribute("cx", xAt(cur)); c.setAttribute("cy", yv(series[k].values[cur] || 0)); });
+      marks.setAttribute("visibility", "visible");
+    };
+    const content = () => [labels[cur], [...series].sort((a, b) => (b.values[cur] || 0) - (a.values[cur] || 0)).map((s) => [s.name, s.color, `${fmt(s.values[cur] || 0)} ${unit}`]),
+      series.length > 1 ? `Total ${fmt(series.reduce((a, s) => a + (s.values[cur] || 0), 0))} ${unit}` : null];
+    const hit = svg("rect", { class: "hit", x: L - 10, y: T, width: pw + 20, height: ph, tabindex: 0, "aria-label": "Move along the chart with the arrow keys" });
+    const at = (clientX) => { const r = g.getBoundingClientRect(); const vx = ((clientX - r.left) / r.width) * W; return labels.length === 1 ? 0 : Math.round(((vx - L) / pw) * (labels.length - 1)); };
+    const clear = () => { hideTip(); cross.setAttribute("visibility", "hidden"); marks.setAttribute("visibility", "hidden"); };
+    hit.addEventListener("pointermove", (e) => { place(at(e.clientX)); const [t, rows, f] = content(); showTip(e.clientX, e.clientY, t, rows, f); });
+    hit.addEventListener("pointerleave", clear);
+    const showAtCur = () => { place(cur); const r = g.getBoundingClientRect(); const [t, rows, f] = content(); showTip(r.left + (xAt(cur) / W) * r.width, r.top + r.height * 0.25, t, rows, f); };
+    hit.addEventListener("focus", showAtCur);
+    hit.addEventListener("keydown", (e) => { if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault(); cur += e.key === "ArrowLeft" ? -1 : 1; showAtCur(); } });
+    hit.addEventListener("blur", clear);
+    g.append(hit);
+    return g;
+  }
+  const legend = (items, kind = "box") => el("div", { class: `legend ${kind}` }, items.map(([name, color]) => el("span", {}, el("i", { style: `background:${color}` }), name)));
+  // A card whose chart can switch to the same numbers as a table.
+  function vizCard(title, note, { legend: lg, chart, labels, series, fmt = fmtH, unit = "h", rowHead = "" }) {
+    const multi = series.length > 1;
+    const table = el("div", { class: "scroll", hidden: true }, el("table", { class: "tbl" },
+      el("thead", {}, el("tr", {}, el("th", {}, rowHead), series.map((s) => el("th", { class: "num" }, s.name)), multi ? el("th", { class: "num" }, "Total") : null)),
+      el("tbody", {}, labels.map((lab, i) => el("tr", {}, el("td", {}, lab), series.map((s) => el("td", { class: "num" }, fmt(s.values[i] || 0))),
+        multi ? el("td", { class: "num strong" }, fmt(series.reduce((a, s) => a + (s.values[i] || 0), 0))) : null)))),
+      el("p", { class: "faint small", style: "margin-top:8px" }, `Values in ${unit === "h" ? "hours" : unit}.`));
+    const view = el("div", { class: "viz" }, lg, chart);
+    const btn = el("button", { type: "button", class: "btn ghost tiny", "aria-pressed": "false" }, "Table");
+    btn.addEventListener("click", () => { const show = table.hidden; table.hidden = !show; view.hidden = show; btn.textContent = show ? "Chart" : "Table"; btn.setAttribute("aria-pressed", String(show)); });
+    return el("section", { class: "card glass" }, el("div", { class: "card-h" }, el("h2", {}, title), el("div", { class: "card-tools" }, note ? el("span", { class: "note" }, note) : null, btn)), view, table);
+  }
+  // Horizontal bars, one per row, each in its own colour. Optional light second part (e.g. own categories after Research).
+  function rowBars(rows, { max = null, fmt = (v) => hm(v), light = null, tip = null } = {}) {
+    const top = max ?? Math.max(1, ...rows.map((r) => (r.solid || 0) + (r.light || 0)));
+    return el("div", {}, rows.map((r) => {
+      const solid = r.solid || 0, lite = r.light || 0;
+      const row = el("div", { class: "hbar", tabindex: 0 }, el("div", { class: "name", title: r.name }, r.dotColor ? dot(r.dotColor) : null, r.name),
+        el("div", { class: "track" },
+          solid > 0 ? el("span", { style: `width:${(solid / top) * 100}%;background:${r.color}` }) : null,
+          lite > 0 ? el("span", { class: "lite", style: `width:${(lite / top) * 100}%;background:${r.color}` }) : null),
+        el("div", { class: "val" }, r.text ?? fmt(solid + lite)));
+      if (tip) bindTip(row, row, () => tip(r));
+      return row;
+    }));
+  }
+  // Rows x columns with each cell shaded by its value (one blue ramp: darker = less).
+  function heatTable(rows, cols, value, { fmt = (v) => (v ? hm(v) : "–"), rowHead = "", colTotals = true } = {}) {
+    const max = Math.max(1, ...rows.flatMap((r) => cols.map((c) => value(r, c))));
+    return el("div", { class: "scroll" }, el("table", { class: "tbl heat" },
+      el("thead", {}, el("tr", {}, el("th", {}, rowHead), cols.map((c) => el("th", { class: "num" }, c.name)), el("th", { class: "num" }, "Total"))),
+      el("tbody", {}, rows.map((r) => {
+        const vals = cols.map((c) => value(r, c));
+        return el("tr", {}, el("td", { class: "strong" }, r.color ? dot(r.color) : null, r.name),
+          vals.map((v) => el("td", { class: "num cell", style: v ? `background:rgba(57,135,229,${(0.12 + 0.68 * (v / max)).toFixed(3)})` : "" }, fmt(v))),
+          el("td", { class: "num strong" }, fmt(vals.reduce((a, b) => a + b, 0))));
+      }),
+      colTotals ? el("tr", { class: "total" }, el("td", {}, "Total"), cols.map((c) => el("td", { class: "num" }, fmt(rows.reduce((a, r) => a + value(r, c), 0)))),
+        el("td", { class: "num" }, fmt(rows.reduce((a, r) => a + cols.reduce((x, c) => x + value(r, c), 0), 0)))) : null)));
+  }
+
   function hbars(rows, colors) {
     const max = Math.max(1, ...rows.map((r) => r.parts.reduce((a, b) => a + b, 0)));
     return el("div", {}, rows.map((r) => el("div", { class: "hbar" }, el("div", { class: "name", title: r.name }, r.name),
@@ -659,6 +841,7 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
     const nav = [];
     if (state.me) nav.push(["week", "My week"], ["calls", "Earnings calls"], ["categories", "Categories"]);
     if (state.team) nav.push(["team", "Team"]);
+    nav.push(["analytics", "Analytics"]);
     nav.push(["excel", "Excel"]);
     const bar = el("header", { class: "topbar glass" },
       el("div", { class: "brand" }, el("img", { src: ICON_URI, alt: "" }), el("span", {}, "Team Timesheet")),
@@ -1016,7 +1199,19 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
     const nw = open.filter((c) => c.joined && !c.written).length;
     const toggle = el("label", { class: "muted small", style: "display:flex;gap:8px;align-items:center;cursor:pointer" },
       el("input", { type: "checkbox", class: "check", checked: state.showSent, on: { change: (e) => { state.showSent = e.target.checked; reload(); } } }), "Show sent notes");
+    const t0 = parseIso(iso(today()));
+    const month = { from: iso(new Date(t0.getFullYear(), t0.getMonth(), 1)), end: iso(t0), buckets: [] };
+    const year = { from: iso(new Date(t0.getFullYear(), 0, 1)), end: iso(t0), buckets: [] };
+    const ever = { from: "0000-01-01", end: iso(t0), buckets: [] };
+    const cm = callStats(d.calls, month), cy = callStats(d.calls, year), ca = callStats(d.calls, ever);
     page.replaceChildren(pageHead("Earnings calls", "Companies you follow. Tick when you've joined the call and written the note, then add the date you sent it."),
+      el("div", { class: "tiles" },
+        tile("Attended this month", String(cm.attended), `${cm.tracked} ${cm.tracked === 1 ? "call" : "calls"} this month`),
+        tile("Attended this year", String(cy.attended), `${ca.attended} in total`),
+        tile("Notes sent this month", String(cm.sent), `${ca.sent} in total`),
+        tile("Call to note sent", days1(ca.avgDays), "Your average"),
+        tile("Notes to write", String(nw), nw ? "Joined, note not written" : "All written"),
+        tile("Notes to send", String(open.filter((c) => c.written).length), "Written, not sent yet")),
       card("Add a company", null, form),
       card("Your calls", `${open.length} open · ${nw} ${nw === 1 ? "note" : "notes"} to write · ${open.filter((c) => c.written).length} to send`, toggle,
         shown.length ? el("div", { class: "scroll" }, el("table", { class: "tbl" },
@@ -1108,7 +1303,9 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
   // ------------------------------------------------------------------ Team view
   async function viewTeam(page) {
     const wk = state.week, reload = () => viewTeam(page).catch((e) => toast(e.message, true));
-    const t = team(state.people || [], wk), cc = t.counts;
+    const people = state.people || [];
+    const t = team(people, wk), cc = t.counts, pc = personColors(people);
+    const colorOf = (name) => pc.get(name) || OTHER_COLOR;
     const logged = t.rows.filter((p) => p.total > 0), missing = t.rows.filter((p) => p.total === 0).map((p) => p.name);
     const change = t.prev ? (t.total - t.prev) / t.prev : null;
     const sel = t.rows.find((p) => p.name === state.teamSel);
@@ -1117,6 +1314,11 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
       try { if (!(await permitted(state.team, "read", true))) throw Object.assign(new Error(), { name: "NotAllowedError" }); await loadTeam(); toast("Refreshed from the shared folder"); reload(); }
       catch (x) { toast(friendly(x), true); } } } }, icon("refresh"), "Refresh");
     const skippedNote = state.skipped.length ? el("p", { class: "faint small" }, "Not included: " + state.skipped.map((s) => `${s.folder} (${s.why})`).join(", ")) : null;
+    const weekLabels = t.weeks.map((w) => w.label);
+    const perPersonWeeks = t.rows.map((p) => ({ name: p.name, color: colorOf(p.name),
+      values: t.weeks.map((_, i) => { const s = addDays(wk, -7 * (7 - i)); return minutesBetween(p.data, s, addDays(s, 6)) / 60; }) }));
+    const perPersonDays = t.rows.map((p) => ({ name: p.name, color: colorOf(p.name), values: p.byDay.map((m) => m / 60) }));
+    const personLegend = legend(t.rows.map((p) => [p.name, colorOf(p.name)]));
     page.replaceChildren(
       pageHead("Team", `From the folder “${state.team.name}”. Research is shared by everyone; own categories are each person's other work.`, el("div", { class: "actions" }, refresh, weekNav(reload))),
       skippedNote,
@@ -1128,15 +1330,17 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
         tile("People logged", `${logged.length} of ${t.rows.length}`, missing.length ? `Not yet: ${missing.join(", ")}` : "Everyone has logged"),
         tile("Calls next 7 days", String(cc.next7), `${cc.toWrite} to write · ${cc.toSend} to send`)),
       el("div", { class: "row" },
-        card("This week by person", null, legend([["Research", ACCENT], ["Own categories", SILVER]]), hbars(t.rows.map((p) => ({ name: p.name, parts: [p.research, p.own] })), [ACCENT, SILVER])),
-        card("Last 8 weeks", "Team hours per week", legend([["Research", ACCENT], ["Own categories", SILVER]]),
-          columnChart(t.weeks.map((w) => w.label), [{ name: "Research", color: ACCENT, values: t.weeks.map((w) => w.research / 60) }, { name: "Own categories", color: SILVER, values: t.weeks.map((w) => w.own / 60) }]))),
+        card("This week by person", "Solid: Research · light: own categories",
+          legend([["Research", "#c8ccd6"], ["Own categories", "rgba(200,204,214,0.38)"]]),
+          rowBars(t.rows.map((p) => ({ name: p.name, dotColor: colorOf(p.name), color: colorOf(p.name), solid: p.research, light: p.own })),
+            { tip: (b) => [b.name, [["Research", b.color, hm(b.solid)], ["Own categories", b.color, hm(b.light)]], `Total ${hm(b.solid + b.light)}`] })),
+        vizCard("Last 8 weeks", "Team hours per week, by person", { legend: personLegend, chart: columnChart(weekLabels, perPersonWeeks), labels: weekLabels, series: perPersonWeeks, rowHead: "Week" })),
       el("div", { class: "row wide-left" },
         card("People", "Select a person to see their entries", el("div", { class: "scroll" }, el("table", { class: "tbl" },
           el("thead", {}, el("tr", {}, el("th", {}, "Person"), el("th", { class: "num" }, "Research"), el("th", { class: "num" }, "Own"), el("th", { class: "num" }, "Total"), el("th", { class: "num" }, "vs last week"))),
           el("tbody", {}, t.rows.map((p) => el("tr", { class: "clickable" + (p.name === state.teamSel ? " selected" : ""), tabindex: 0,
             on: { click: () => { state.teamSel = state.teamSel === p.name ? null : p.name; reload(); }, keydown: (e) => { if (e.key === "Enter") e.currentTarget.click(); } } },
-            el("td", {}, el("div", { class: "strong" }, p.name), el("div", { class: "faint small" }, p.own_cats.length ? p.own_cats.slice(0, 4).map((c) => `${c.name} ${hm(c.minutes)}`).join("  ·  ") : "No own categories this week")),
+            el("td", {}, el("div", { class: "strong" }, dot(colorOf(p.name)), p.name), el("div", { class: "faint small indent" }, p.own_cats.length ? p.own_cats.slice(0, 4).map((c) => `${c.name} ${hm(c.minutes)}`).join("  ·  ") : "No own categories this week")),
             el("td", { class: "num" }, hm(p.research)), el("td", { class: "num" }, hm(p.own)), el("td", { class: "num strong" }, hm(p.total)),
             el("td", { class: "num muted" }, (p.total - p.prev >= 0 ? "+" : "−") + hm(Math.abs(p.total - p.prev))))),
             el("tr", { class: "total" }, el("td", {}, "Team"), el("td", { class: "num" }, hm(t.research)), el("td", { class: "num" }, hm(t.own)), el("td", { class: "num" }, hm(t.total)),
@@ -1150,16 +1354,199 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
           : el("div", { class: "empty" }, `${sel.name} hasn't logged time this week.`);
       })()) : null,
       el("div", { class: "row" },
-        card("Hours by day", "This week, by person", legend(t.rows.map((p, i) => [p.name, SHADES[i % SHADES.length]])),
-          columnChart(DOW, t.rows.map((p, i) => ({ name: p.name, color: SHADES[i % SHADES.length], values: p.byDay.map((m) => m / 60) })))),
-        card("Last 12 months", "Team hours per month", legend([["Research", ACCENT], ["Own categories", SILVER]]),
-          columnChart(t.months.map((m) => m.label), [{ name: "Research", color: ACCENT, values: t.months.map((m) => m.research / 60) }, { name: "Own categories", color: SILVER, values: t.months.map((m) => m.own / 60) }]))),
-      card("Earnings calls", `Open calls, soonest first · ${cc.sentMonth} ${cc.sentMonth === 1 ? "note" : "notes"} sent this month`,
+        vizCard("Hours by day", "This week, by person", { legend: personLegend, chart: columnChart(DOW, perPersonDays), labels: DOW, series: perPersonDays, rowHead: "Day" }),
+        teamCallsCard(people, pc)),
+      card("Open earnings calls", `Soonest first · ${cc.sentMonth} ${cc.sentMonth === 1 ? "note" : "notes"} sent this month`,
         t.open.length ? el("div", { class: "scroll" }, el("table", { class: "tbl" },
           el("thead", {}, el("tr", {}, el("th", {}, "Who"), el("th", {}, "Stock"), el("th", {}, "Call date"), el("th", {}, "Joined"), el("th", {}, "Note"), el("th", {}, "Status"))),
-          el("tbody", {}, t.open.map((c) => { const s = callStatus(c); return el("tr", {}, el("td", { class: "muted" }, c.person), el("td", { class: "strong" }, c.stock),
+          el("tbody", {}, t.open.map((c) => { const s = callStatus(c); return el("tr", {}, el("td", { class: "muted" }, dot(colorOf(c.person)), c.person), el("td", { class: "strong" }, c.stock),
             el("td", {}, c.date ? fmtDow(parseIso(c.date)) : el("span", { class: "faint" }, "No date")), el("td", { class: "accent" }, c.joined ? "✓" : ""), el("td", { class: "accent" }, c.written ? "✓" : ""),
-            el("td", {}, el("span", { class: `pill ${s.kind}` }, s.text))); })))) : el("div", { class: "empty" }, "No open earnings calls.")));
+            el("td", {}, el("span", { class: `pill ${s.kind}` }, s.text))); })))) : el("div", { class: "empty" }, "No open earnings calls.")),
+      el("p", { class: "faint small", style: "padding:0 6px" }, "Trends over longer periods, category mix and earnings call follow-through are on the ", el("a", { href: "#/analytics" }, "Analytics"), " page."));
+  }
+
+  // ------------------------------------------------------------------ analytics
+  const PERIODS = [["4w", "Last 4 weeks"], ["12w", "Last 12 weeks"], ["q", "This quarter"], ["ytd", "Year to date"], ["12m", "Last 12 months"]];
+  function periodRange(key) {
+    const t = parseIso(iso(today())), mon = mondayOf(t);
+    let from, to, monthly = false;
+    if (key === "4w") { from = addDays(mon, -21); to = addDays(mon, 6); }
+    else if (key === "12w") { from = addDays(mon, -77); to = addDays(mon, 6); }
+    else if (key === "q") { from = new Date(t.getFullYear(), Math.floor(t.getMonth() / 3) * 3, 1); to = new Date(from.getFullYear(), from.getMonth() + 3, 0); }
+    else if (key === "ytd") { from = new Date(t.getFullYear(), 0, 1); to = new Date(t.getFullYear(), 11, 31); monthly = (t - from) / 864e5 > 16 * 7; }
+    else { from = new Date(t.getFullYear(), t.getMonth() - 11, 1); to = new Date(t.getFullYear(), t.getMonth() + 1, 0); monthly = true; }
+    const end = to < t ? to : t, buckets = [];
+    if (monthly) {
+      for (let d = new Date(from); d <= end; d = new Date(d.getFullYear(), d.getMonth() + 1, 1))
+        buckets.push({ label: `${MONTHS[d.getMonth()]} ${String(d.getFullYear()).slice(2)}`, from: iso(d), to: iso(new Date(d.getFullYear(), d.getMonth() + 1, 0)) });
+    } else {
+      for (let d = mondayOf(from); d <= end; d = addDays(d, 7))
+        buckets.push({ label: "W" + pad(isoWeek(d).week), from: iso(d < from ? from : d), to: iso(addDays(d, 6) > to ? to : addDays(d, 6)) });
+    }
+    const days = Math.round((end - from) / 864e5) + 1;
+    const weekdays = [0, 0, 0, 0, 0, 0, 0];   // how many Mondays, Tuesdays... the period has had so far
+    for (let d = new Date(from); d <= end; d = addDays(d, 1)) weekdays[(d.getDay() + 6) % 7]++;
+    return { key, from: iso(from), to: iso(to), end: iso(end), days, weeks: Math.max(1, days / 7), buckets, monthly, weekdays,
+             label: PERIODS.find((p) => p[0] === key)[1], span: `${fmtDay(from)} ${from.getFullYear()} – ${fmtDay(end)} ${end.getFullYear()}` };
+  }
+  const bucketOf = (range, date) => range.buckets.findIndex((b) => date >= b.from && date <= b.to);
+  function entryStats(entries, catNames, range) {
+    const s = { total: 0, research: 0, byBucket: range.buckets.map(() => 0), byWeekday: [0, 0, 0, 0, 0, 0, 0], days: new Set(), entries: 0, timer: 0, byCat: new Map() };
+    for (const e of entries) {
+      if (e.date < range.from || e.date > range.end) continue;
+      const n = catNames.get(e.cat) || "(removed)";
+      s.total += e.minutes; s.entries++; s.days.add(e.date);
+      if (isShared(n)) s.research += e.minutes;
+      if (e.source === "timer") s.timer += e.minutes;
+      const b = bucketOf(range, e.date); if (b >= 0) s.byBucket[b] += e.minutes;
+      s.byWeekday[(parseIso(e.date).getDay() + 6) % 7] += e.minutes;
+      const k = n.trim().toLowerCase(); s.byCat.set(k, (s.byCat.get(k) || 0) + e.minutes);
+    }
+    s.days = s.days.size;
+    s.weeksLogged = range.monthly ? null : s.byBucket.filter((m) => m > 0).length;
+    return s;
+  }
+  /* Earnings calls in a period: attended = joined, counted by the call date; notes counted by the date they were sent. */
+  function callStats(calls, range) {
+    const inRange = (d) => d && d >= range.from && d <= range.end;
+    const t = iso(today());
+    const attended = calls.filter((c) => c.joined && inRange(c.date));
+    const sent = calls.filter((c) => inRange(c.sent));
+    const turn = sent.filter((c) => c.date).map((c) => Math.max(0, Math.round((parseIso(c.sent) - parseIso(c.date)) / 864e5)));
+    return {
+      tracked: calls.filter((c) => inRange(c.date)).length,
+      attended: attended.length,
+      byBucket: range.buckets.map((b) => attended.filter((c) => c.date >= b.from && c.date <= b.to).length),
+      sent: sent.length,
+      avgDays: turn.length ? turn.reduce((a, b) => a + b, 0) / turn.length : null,
+      waiting: calls.filter((c) => c.joined && !c.sent).length,
+      missed: calls.filter((c) => inRange(c.date) && c.date < t && !c.joined && !c.sent).length,
+      sentRate: attended.length ? attended.filter((c) => c.sent).length / attended.length : null,
+      turns: turn,
+    };
+  }
+  const days1 = (v) => (v === null ? "–" : `${v.toFixed(1)} days`);
+  const share = (a, b) => (b ? Math.round((a / b) * 100) + "%" : "–");
+  function periodPicker(onPick) {
+    return el("div", { class: "seg", role: "group", "aria-label": "Period" }, PERIODS.map(([k, label]) =>
+      el("button", { type: "button", "aria-pressed": String(state.anaPeriod === k), on: { click: () => { state.anaPeriod = k; onPick(); } } }, label)));
+  }
+  async function viewAnalytics(page) {
+    if (!state.anaPeriod) state.anaPeriod = "12w";
+    const range = periodRange(state.anaPeriod);
+    const reload = () => viewAnalytics(page).catch((e) => toast(e.message, true));
+    if (state.team) return teamAnalytics(page, range, reload);
+    await refreshMine();
+    return personalAnalytics(page, range, reload);
+  }
+  function teamAnalytics(page, range, reload) {
+    const people = state.people || [];
+    const pc = personColors(people);
+    const rows = people.map(({ data: d }) => {
+      const catNames = new Map(d.categories.map((c) => [c.id, c.name]));
+      return { name: d.person, color: pc.get(d.person), d, s: entryStats(d.entries, catNames, range), c: callStats(d.calls, range) };
+    }).sort((a, b) => a.name.localeCompare(b.name));
+    const sum = (f) => rows.reduce((a, r) => a + f(r), 0);
+    const total = sum((r) => r.s.total), research = sum((r) => r.s.research), active = rows.filter((r) => r.s.total > 0).length;
+    const attended = sum((r) => r.c.attended), sent = sum((r) => r.c.sent);
+    const turns = rows.flatMap((r) => r.c.turns);
+    const avgDays = turns.length ? turns.reduce((a, b) => a + b, 0) / turns.length : null;
+    const labels = range.buckets.map((b) => b.label);
+    const perPerson = rows.map((r) => ({ name: r.name, color: r.color, values: r.s.byBucket.map((m) => m / 60) }));
+    // Categories across the team, Research first, then by hours.
+    const catTot = new Map(), catLabel = new Map();
+    for (const r of rows) for (const [k, m] of r.s.byCat) { catTot.set(k, (catTot.get(k) || 0) + m); if (!catLabel.has(k)) catLabel.set(k, r.d.categories.find((c) => c.name.trim().toLowerCase() === k)?.name || k); }
+    const cols = [...catTot].sort((a, b) => ((b[0] === "research") - (a[0] === "research")) || b[1] - a[1]).map(([k]) => ({ key: k, name: catLabel.get(k) }));
+    const weekdayAvg = rows.map((r) => ({ name: r.name, color: r.color, values: r.s.byWeekday.map((m, i) => (range.weekdays[i] ? m / range.weekdays[i] / 60 : 0)) }));
+    const callsBy = rows.map((r) => ({ name: r.name, color: r.color, values: r.c.byBucket }));
+    const personLegend = legend(rows.map((r) => [r.name, r.color]));
+    page.replaceChildren(
+      pageHead("Analytics", `${range.label} · ${range.span}. Everyone in the folder “${state.team.name}”.`, periodPicker(reload)),
+      el("div", { class: "tiles" },
+        tile("Team hours", hdec(total), `${active} of ${rows.length} people logged time`),
+        tile("Per person, per week", hdec(active ? total / active / range.weeks : 0), "Average of those who logged"),
+        tile("Research share", share(research, total), `${hdec(research)} on Research`),
+        tile("Calls attended", String(attended), `${sum((r) => r.c.tracked)} calls in the period`),
+        tile("Notes sent", String(sent), sum((r) => r.c.waiting) ? `${sum((r) => r.c.waiting)} still waiting for a note` : "None waiting"),
+        tile("Call to note sent", days1(avgDays), "Average across notes")),
+      el("div", { class: "row wide-left" },
+        vizCard("Hours per person", range.monthly ? "Per month" : "Per week", { legend: legend(rows.map((r) => [r.name, r.color]), "line"), chart: lineChart(labels, perPerson), labels, series: perPerson, rowHead: range.monthly ? "Month" : "Week" }),
+        card("Research share by person", "Share of each person's hours spent on Research",
+          rowBars(rows.map((r) => ({ name: r.name, dotColor: r.color, color: r.color, solid: r.s.total ? r.s.research / r.s.total : 0, text: share(r.s.research, r.s.total) })),
+            { max: 1, tip: (b) => { const r = rows.find((x) => x.name === b.name); return [r.name, [["Research", r.color, hm(r.s.research)], ["All hours", OTHER_COLOR, hm(r.s.total)]], share(r.s.research, r.s.total) + " on Research"]; } }))),
+      card("Category mix", "Hours by person and category in the period. Darker blue means fewer hours.",
+        cols.length ? heatTable(rows, cols, (r, c) => r.s.byCat.get(c.key) || 0, { rowHead: "Person" }) : el("div", { class: "empty" }, "No hours logged in this period.")),
+      el("div", { class: "row" },
+        vizCard("Average day", "Average hours on each weekday", { legend: personLegend, chart: columnChart(DOW, weekdayAvg), labels: DOW, series: weekdayAvg, rowHead: "Day" }),
+        vizCard("Earnings calls attended", range.monthly ? "Per month, by call date" : "Per week, by call date",
+          { legend: legend(rows.map((r) => [r.name, r.color])), chart: columnChart(labels, callsBy, { unit: "calls", fmt: (v) => String(Math.round(v)), whole: true }), labels, series: callsBy, unit: "calls", fmt: (v) => String(Math.round(v)), rowHead: range.monthly ? "Month" : "Week" })),
+      el("div", { class: "row wide-left" },
+        card("Earnings calls by person", range.label, el("div", { class: "scroll" }, el("table", { class: "tbl" },
+          el("thead", {}, el("tr", {}, el("th", {}, "Person"), el("th", { class: "num" }, "Calls"), el("th", { class: "num" }, "Attended"), el("th", { class: "num" }, "Notes sent"),
+            el("th", { class: "num" }, "Sent after attending"), el("th", { class: "num" }, "Call to sent"), el("th", { class: "num" }, "Missed"))),
+          el("tbody", {}, rows.map((r) => el("tr", {}, el("td", { class: "strong" }, dot(r.color), r.name), el("td", { class: "num" }, String(r.c.tracked)), el("td", { class: "num strong" }, String(r.c.attended)),
+            el("td", { class: "num" }, String(r.c.sent)), el("td", { class: "num muted" }, r.c.sentRate === null ? "–" : share(r.c.sentRate, 1)), el("td", { class: "num muted" }, days1(r.c.avgDays)),
+            el("td", { class: "num" + (r.c.missed ? " alert-text" : " muted") }, String(r.c.missed)))),
+            el("tr", { class: "total" }, el("td", {}, "Team"), el("td", { class: "num" }, String(sum((r) => r.c.tracked))), el("td", { class: "num" }, String(attended)), el("td", { class: "num" }, String(sent)),
+              el("td", {}), el("td", { class: "num" }, days1(avgDays)), el("td", { class: "num" }, String(sum((r) => r.c.missed))))))),
+          el("p", { class: "faint small" }, "Missed: the call date has passed and it wasn't marked as joined.")),
+        card("Logging habits", range.label, el("div", { class: "scroll" }, el("table", { class: "tbl" },
+          el("thead", {}, el("tr", {}, el("th", {}, "Person"), el("th", { class: "num" }, "Days logged"), range.monthly ? null : el("th", { class: "num" }, "Weeks logged"), el("th", { class: "num" }, "Per day logged"), el("th", { class: "num" }, "Timer"))),
+          el("tbody", {}, rows.map((r) => el("tr", {}, el("td", { class: "strong" }, dot(r.color), r.name), el("td", { class: "num" }, String(r.s.days)),
+            range.monthly ? null : el("td", { class: "num" }, `${r.s.weeksLogged} of ${range.buckets.length}`),
+            el("td", { class: "num" }, r.s.days ? hm(r.s.total / r.s.days) : "–"), el("td", { class: "num muted" }, share(r.s.timer, r.s.total))))))),
+          el("p", { class: "faint small" }, "Timer: share of hours logged with the time clock rather than typed in."))));
+  }
+  function personalAnalytics(page, range, reload) {
+    const d = state.data, catNames = new Map(d.categories.map((c) => [c.id, c.name])), cc = categoryColors(d);
+    const s = entryStats(d.entries, catNames, range), c = callStats(d.calls, range);
+    const labels = range.buckets.map((b) => b.label);
+    const used = d.categories.filter((cat) => d.entries.some((e) => e.cat === cat.id && e.date >= range.from && e.date <= range.end));
+    const perCat = used.map((cat) => {
+      const st = entryStats(d.entries.filter((e) => e.cat === cat.id), catNames, range);
+      return { name: cat.name, color: cc.get(cat.id), values: st.byBucket.map((m) => m / 60), total: st.total, weekday: st.byWeekday };
+    });
+    const weekdayAvg = perCat.map((x) => ({ name: x.name, color: x.color, values: x.weekday.map((m, i) => (range.weekdays[i] ? m / range.weekdays[i] / 60 : 0)) }));
+    const callsSeries = [{ name: "Calls attended", color: PERSON_COLORS[0], values: c.byBucket }];
+    page.replaceChildren(
+      pageHead("Analytics", `${range.label} · ${range.span}. Your own hours and earnings calls.`, periodPicker(reload)),
+      el("div", { class: "tiles" },
+        tile("My hours", hdec(s.total), `${s.days} ${s.days === 1 ? "day" : "days"} logged`),
+        tile("Per week", hdec(s.total / range.weeks), "Average over the period"),
+        tile("Research share", share(s.research, s.total), `${hdec(s.research)} on Research`),
+        tile("Calls attended", String(c.attended), `${c.tracked} calls in the period`),
+        tile("Notes sent", String(c.sent), c.waiting ? `${c.waiting} still waiting for a note` : "None waiting"),
+        tile("Call to note sent", days1(c.avgDays), "Average across notes")),
+      perCat.length ? el("div", { class: "row wide-left" },
+        vizCard("Hours by category", range.monthly ? "Per month" : "Per week", { legend: legend(perCat.map((x) => [x.name, x.color]), "line"), chart: lineChart(labels, perCat), labels, series: perCat, rowHead: range.monthly ? "Month" : "Week" }),
+        card("Where my time went", range.label, rowBars(perCat.map((x) => ({ name: x.name, dotColor: x.color, color: x.color, solid: x.total, text: `${hm(x.total)} · ${share(x.total, s.total)}` })),
+          { tip: (b) => [b.name, [[b.name, b.color, hm(b.solid)]], share(b.solid, s.total) + " of your hours"] })))
+        : card("Hours", range.label, el("div", { class: "empty" }, el("b", {}, "No hours logged in this period."), el("span", {}, "Pick a longer period above, or log some time on My week."))),
+      el("div", { class: "row" },
+        perCat.length ? vizCard("Average day", "Average hours on each weekday", { legend: perCat.length > 1 ? legend(perCat.map((x) => [x.name, x.color])) : null, chart: columnChart(DOW, weekdayAvg), labels: DOW, series: weekdayAvg, rowHead: "Day" }) : null,
+        vizCard("Earnings calls attended", range.monthly ? "Per month, by call date" : "Per week, by call date",
+          { chart: columnChart(labels, callsSeries, { unit: "calls", fmt: (v) => String(Math.round(v)), whole: true }), labels, series: callsSeries, unit: "calls", fmt: (v) => String(Math.round(v)), rowHead: range.monthly ? "Month" : "Week" })));
+  }
+  /* Earnings calls attended by each person: this month, this quarter and all time, plus what's still to do. */
+  function teamCallsCard(people, pc) {
+    const t = parseIso(iso(today()));
+    const month = { from: iso(new Date(t.getFullYear(), t.getMonth(), 1)), end: iso(t), buckets: [] };
+    const quarter = { from: iso(new Date(t.getFullYear(), Math.floor(t.getMonth() / 3) * 3, 1)), end: iso(t), buckets: [] };
+    const ever = { from: "0000-01-01", end: iso(t), buckets: [] };
+    const rows = people.map(({ data: d }) => ({ name: d.person, color: pc.get(d.person), m: callStats(d.calls, month), q: callStats(d.calls, quarter), all: callStats(d.calls, ever),
+      toWrite: d.calls.filter((c) => c.joined && !c.written && !c.sent).length, toSend: d.calls.filter((c) => c.written && !c.sent).length })).sort((a, b) => a.name.localeCompare(b.name));
+    const sum = (f) => rows.reduce((a, r) => a + f(r), 0);
+    return card("Earnings calls attended", "Calls marked as joined, by call date",
+      rowBars(rows.map((r) => ({ name: r.name, dotColor: r.color, color: r.color, solid: r.q.attended, text: String(r.q.attended) })),
+        { tip: (b) => { const r = rows.find((x) => x.name === b.name); return [r.name, [["This month", r.color, String(r.m.attended)], ["This quarter", r.color, String(r.q.attended)], ["All time", r.color, String(r.all.attended)]], `${r.all.sent} notes sent in total`]; } }),
+      el("p", { class: "faint small" }, "Bars: this quarter."),
+      el("div", { class: "scroll" }, el("table", { class: "tbl compact" },
+        el("thead", {}, el("tr", {}, el("th", {}, "Person"), el("th", { class: "num" }, "Month"), el("th", { class: "num" }, "Quarter"), el("th", { class: "num" }, "All time"),
+          el("th", { class: "num" }, "Sent"), el("th", { class: "num" }, "To write"))),
+        el("tbody", {}, rows.map((r) => el("tr", {}, el("td", { class: "strong" }, dot(r.color), r.name), el("td", { class: "num" }, String(r.m.attended)), el("td", { class: "num" }, String(r.q.attended)),
+          el("td", { class: "num strong" }, String(r.all.attended)), el("td", { class: "num" }, String(r.all.sent)), el("td", { class: "num" }, String(r.toWrite)))),
+          el("tr", { class: "total" }, el("td", {}, "Team"), el("td", { class: "num" }, String(sum((r) => r.m.attended))), el("td", { class: "num" }, String(sum((r) => r.q.attended))),
+            el("td", { class: "num" }, String(sum((r) => r.all.attended))), el("td", { class: "num" }, String(sum((r) => r.all.sent))), el("td", { class: "num" }, String(sum((r) => r.toWrite))))))));
   }
 
   // ------------------------------------------------------------------ Excel
@@ -1218,7 +1605,7 @@ in
   }
 
   // ------------------------------------------------------------------ routing
-  const VIEWS = { week: viewWeek, calls: viewCalls, categories: viewCategories, team: viewTeam, excel: viewExcel };
+  const VIEWS = { week: viewWeek, calls: viewCalls, categories: viewCategories, team: viewTeam, analytics: viewAnalytics, excel: viewExcel };
   function route() {
     clearInterval(state.tick);
     window.ondragover = window.ondrop = window.ondragleave = null;
