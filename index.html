@@ -287,6 +287,26 @@ svg.chart line.cross { stroke: rgba(255, 255, 255, 0.28); stroke-width: 1; }
 .tbl.heat th, .tbl.heat td { padding-left: 10px; padding-right: 10px; }
 .alert-text { color: var(--alert); }
 .tbl td.strong { white-space: nowrap; }
+/* ---------- leave and exit passes */
+input[type="time"] { font: inherit; color: var(--text); background: var(--field); border: 1px solid var(--field-rim); border-radius: 12px;
+  padding: 8px 12px; min-height: 38px; width: 100%; min-width: 0; }
+input[type="time"]:focus { outline: none; border-color: var(--accent-text); box-shadow: 0 0 0 3px var(--accent-soft); }
+input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.8); }
+.pill.leave { background: var(--accent-soft); color: var(--accent-text); }
+.pill.sick { background: rgba(217, 89, 38, 0.18); color: #f2a27f; }
+.pill.exit { background: rgba(255, 255, 255, 0.09); color: var(--text); }
+.attgrid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
+.att { border-radius: 12px; padding: 10px 10px 11px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--hair); display: grid; gap: 6px; min-width: 0; align-content: start; }
+.att .d { color: var(--text-2); font-size: 12px; font-weight: 600; }
+.att .s { display: flex; flex-wrap: wrap; gap: 4px; min-height: 22px; align-items: center; }
+.att.weekend { background: transparent; }
+.att.today { border-color: rgba(75, 163, 255, 0.55); }
+@media (max-width: 720px) { .attgrid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.tbl.outgrid th, .tbl.outgrid td { padding-left: 8px; padding-right: 8px; min-width: 86px; }
+.tbl.outgrid th:first-child, .tbl.outgrid td:first-child { padding-left: 0; min-width: 110px; }
+.tbl.outgrid td .pill { margin: 2px 4px 2px 0; }
+.tbl.outgrid .weekend { color: var(--text-3); background: rgba(255, 255, 255, 0.015); }
+.tbl.outgrid th.today { color: var(--accent-text); }
 .tbl.compact th, .tbl.compact td { padding-left: 8px; padding-right: 8px; }
 .tbl.compact th:first-child, .tbl.compact td:first-child { padding-left: 0; }
 .viz-tip { position: fixed; z-index: 60; pointer-events: none; min-width: 140px; max-width: 260px; padding: 10px 12px; border-radius: 12px;
@@ -330,6 +350,7 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
     add(node, kids);
     return node;
   }
+  function render(node, ...kids) { node.replaceChildren(); add(node, kids); }
   function add(node, kids) {
     for (const k of kids.flat(Infinity)) {
       if (k === null || k === undefined || k === false) continue;
@@ -472,13 +493,16 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
     const name = String(folderName || "Me").replace(/[_-]+/g, " ").trim() || "Me";
     const cats = ["Research"];
     return { app: "team-timesheet", version: 1, person: name, revision: 0, savedAt: null, createdAt: new Date().toISOString(),
-             categories: cats.map((n) => ({ id: uid(), name: n, target: null, archived: false })), entries: [], timer: null, calls: [] };
+             categories: cats.map((n) => ({ id: uid(), name: n, target: null, archived: false })), entries: [], timer: null, calls: [], absences: [], leaveAllowance: null };
   }
   function normalize(d) {
     if (!d || typeof d !== "object") throw new SyntaxError("not a timesheet");
     d.categories = Array.isArray(d.categories) ? d.categories.filter((c) => c && c.id && c.name) : [];
     d.entries = Array.isArray(d.entries) ? d.entries.filter((e) => e && e.id && /^\d{4}-\d{2}-\d{2}$/.test(e.date) && e.minutes > 0) : [];
     d.calls = Array.isArray(d.calls) ? d.calls.filter((c) => c && c.id && c.stock) : [];
+    d.absences = Array.isArray(d.absences) ? d.absences.filter((a) => a && a.id && ["annual", "sick", "exit"].includes(a.type) && /^\d{4}-\d{2}-\d{2}$/.test(a.from)) : [];
+    for (const a of d.absences) { if (!a.to || a.to < a.from || a.type === "exit") a.to = a.from; if (a.type === "exit" && !["late", "early"].includes(a.exit)) a.exit = "late"; }
+    d.leaveAllowance = Number.isFinite(d.leaveAllowance) ? d.leaveAllowance : null;
     d.revision = Number(d.revision) || 0; d.person = d.person || "Me"; d.timer = d.timer || null;
     if (!d.createdAt) {   // timesheets from before this was recorded: use the first entry ever made
       const first = d.entries.reduce((m, e) => (e.at && e.at < m ? e.at : m), Infinity);
@@ -510,7 +534,7 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
     keep(d);
     // The CSV copies are for Excel. If one is open in Excel (which locks it), the save itself has still worked.
     const stale = [];
-    for (const [name, make] of [["entries.csv", entriesCsv], ["calls.csv", callsCsv]]) {
+    for (const [name, make] of [["entries.csv", entriesCsv], ["calls.csv", callsCsv], ["leave.csv", absencesCsv]]) {
       try { await writeText(state.me, name, make([d])); } catch { stale.push(name); }
     }
     try { await dailyBackup(d); } catch { /* the next save tries again */ }
@@ -685,6 +709,7 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
   }
 
   function niceTicks(max, whole = false) {
+    if (!(max > 0.0001)) return [0, 1];
     const steps = [0.25, 0.5, 1, 2, 5, 10, 20, 25, 50, 100, 200, 500, 1000].filter((x) => !whole || x >= 1);
     const step = steps.find((s) => max / s <= 5) || 2000;
     const top = Math.max(step, Math.ceil(max / step) * step);
@@ -700,7 +725,7 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
     const pw = W - L - R, ph = H - T - B, bw = pw / Math.max(1, labels.length), barW = Math.min(24, bw * 0.6);
     const y = (v) => T + ph - (v / top) * ph;
     const g = svg("svg", { class: "chart", viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": `Column chart: ${series.map((s) => s.name).join(", ")}` });
-    for (const t of ticks) g.append(svg("line", { class: t === 0 ? "base" : "grid", x1: L, x2: W - R, y1: y(t), y2: y(t) }), svg("text", { x: L - 8, y: y(t) + 4, "text-anchor": "end" }, fmt(t)));
+    for (const t of ticks) g.append(svg("line", { class: t === 0 ? "base" : "grid", x1: L, x2: W - R, y1: y(t), y2: y(t) }), svg("text", { x: L - 8, y: y(t) + 4, "text-anchor": "end" }, String(t)));
     const step = Math.ceil(labels.length / 13);
     labels.forEach((lab, i) => {
       const x = L + i * bw + (bw - barW) / 2; let base = 0;
@@ -738,7 +763,7 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
     const R = direct ? 96 : 14, pw = W - L - R;
     const xAt = (i) => (labels.length === 1 ? L + pw / 2 : L + (i / (labels.length - 1)) * pw);
     const g = svg("svg", { class: "chart", viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": `Line chart: ${series.map((s) => s.name).join(", ")}` });
-    for (const t of ticks) g.append(svg("line", { class: t === 0 ? "base" : "grid", x1: L, x2: W - R, y1: yv(t), y2: yv(t) }), svg("text", { x: L - 8, y: yv(t) + 4, "text-anchor": "end" }, fmt(t)));
+    for (const t of ticks) g.append(svg("line", { class: t === 0 ? "base" : "grid", x1: L, x2: W - R, y1: yv(t), y2: yv(t) }), svg("text", { x: L - 8, y: yv(t) + 4, "text-anchor": "end" }, String(t)));
     const step = Math.ceil(labels.length / 9);
     labels.forEach((lab, i) => { if (i % step === 0 || i === labels.length - 1) g.append(svg("g", { class: "x" }, svg("text", { x: xAt(i), y: H - 8, "text-anchor": "middle" }, lab))); });
     for (const s of series) {
@@ -839,7 +864,7 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
   }
   function shell(view) {
     const nav = [];
-    if (state.me) nav.push(["week", "My week"], ["calls", "Earnings calls"], ["categories", "Categories"]);
+    if (state.me) nav.push(["week", "My week"], ["calls", "Earnings calls"], ["leave", "Leave & passes"], ["categories", "Categories"]);
     if (state.team) nav.push(["team", "Team"]);
     nav.push(["analytics", "Analytics"]);
     nav.push(["excel", "Excel"]);
@@ -1046,7 +1071,7 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
     const tMin = targeted.reduce((a, c) => a + c.target * 60, 0), tDone = targeted.reduce((a, c) => a + Math.min(c.minutes, c.target * 60), 0);
     const nCats = s.categories.filter((c) => c.minutes > 0).length;
     const entries = d.entries.filter((e) => e.date >= iso(wk) && e.date <= iso(addDays(wk, 6))).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (a.at || 0) - (b.at || 0)));
-    page.replaceChildren(
+    render(page, 
       pageHead("My week", `${d.person}. Saved to your folder “${state.me.name}”${d.savedAt ? `, last saved at ${new Date(d.savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}.`, weekNav(reload)),
       el("div", { class: "tiles" },
         tile("My hours", hdec(s.total), nCats ? `Across ${nCats} ${nCats === 1 ? "category" : "categories"}` : "Nothing logged yet"),
@@ -1055,6 +1080,7 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
         tile("vs last week", change === null ? "–" : `${change >= 0 ? "▲" : "▼"} ${Math.abs(Math.round(change * 100))}%`, `Last week ${hdec(s.prev)}`),
         tile("Target", tMin ? pct(tDone, tMin) : "–", tMin ? `${(tDone / 60).toFixed(1)} of ${(tMin / 60).toFixed(1)} h target` : "No targets set"),
         tile("Next open call", next ? next.stock : "–", next ? `${next.date ? fmtDow(parseIso(next.date)) + " · " : ""}${callStatus(next).text}` : "Add calls to track", true)),
+      attendanceCard(d, wk),
       el("div", { class: "row" }, clockCard(d, active, reload), addTimeCard(d, active, wk, reload)),
       el("div", { class: "row" }, categoryCard(s), card("Last 8 weeks", "My hours per week",
         columnChart(s.weeks.map((w) => w.label), [{ name: "Hours", color: ACCENT, values: s.weeks.map((w) => w.minutes / 60) }], { stacked: false }))),
@@ -1204,7 +1230,7 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
     const year = { from: iso(new Date(t0.getFullYear(), 0, 1)), end: iso(t0), buckets: [] };
     const ever = { from: "0000-01-01", end: iso(t0), buckets: [] };
     const cm = callStats(d.calls, month), cy = callStats(d.calls, year), ca = callStats(d.calls, ever);
-    page.replaceChildren(pageHead("Earnings calls", "Companies you follow. Tick when you've joined the call and written the note, then add the date you sent it."),
+    render(page, pageHead("Earnings calls", "Companies you follow. Tick when you've joined the call and written the note, then add the date you sent it."),
       el("div", { class: "tiles" },
         tile("Attended this month", String(cm.attended), `${cm.tracked} ${cm.tracked === 1 ? "call" : "calls"} this month`),
         tile("Attended this year", String(cy.attended), `${ca.attended} in total`),
@@ -1279,7 +1305,7 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
         toast(res === "restored" ? `${n} restored` : `Added ${n}`); reload();
       } catch (x) { err.textContent = x.message; err.hidden = false; }
     });
-    page.replaceChildren(pageHead("Categories", "The kinds of work you track. Research is shared by the whole team, so keep that name if you use it."),
+    render(page, pageHead("Categories", "The kinds of work you track. Research is shared by the whole team, so keep that name if you use it."),
       el("div", { class: "row wide-left" },
         card("Your categories", "Renaming one also renames its past entries", active.length ? el("table", { class: "tbl" },
           el("thead", {}, el("tr", {}, el("th", {}, "Category"), el("th", {}, "Weekly target (h)"), el("th", { class: "num" }, "Entries"), el("th", {}, ""))),
@@ -1306,7 +1332,9 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
     const people = state.people || [];
     const t = team(people, wk), cc = t.counts, pc = personColors(people);
     const colorOf = (name) => pc.get(name) || OTHER_COLOR;
-    const logged = t.rows.filter((p) => p.total > 0), missing = t.rows.filter((p) => p.total === 0).map((p) => p.name);
+    const logged = t.rows.filter((p) => p.total > 0);
+    const offAllWeek = (p) => leaveStats(p.data.absences, iso(wk), iso(addDays(wk, 4))).annual + leaveStats(p.data.absences, iso(wk), iso(addDays(wk, 4))).sick >= 5;
+    const missing = t.rows.filter((p) => p.total === 0).map((p) => (offAllWeek(p) ? `${p.name} (on leave)` : p.name));
     const change = t.prev ? (t.total - t.prev) / t.prev : null;
     const sel = t.rows.find((p) => p.name === state.teamSel);
     const refresh = el("button", { type: "button", class: "btn", on: { click: async (e) => {
@@ -1319,7 +1347,7 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
       values: t.weeks.map((_, i) => { const s = addDays(wk, -7 * (7 - i)); return minutesBetween(p.data, s, addDays(s, 6)) / 60; }) }));
     const perPersonDays = t.rows.map((p) => ({ name: p.name, color: colorOf(p.name), values: p.byDay.map((m) => m / 60) }));
     const personLegend = legend(t.rows.map((p) => [p.name, colorOf(p.name)]));
-    page.replaceChildren(
+    render(page, 
       pageHead("Team", `From the folder “${state.team.name}”. Research is shared by everyone; own categories are each person's other work.`, el("div", { class: "actions" }, refresh, weekNav(reload))),
       skippedNote,
       el("div", { class: "tiles" },
@@ -1329,6 +1357,7 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
         tile("vs last week", change === null ? "–" : `${change >= 0 ? "▲" : "▼"} ${Math.abs(Math.round(change * 100))}%`, `Last week ${hdec(t.prev)}`),
         tile("People logged", `${logged.length} of ${t.rows.length}`, missing.length ? `Not yet: ${missing.join(", ")}` : "Everyone has logged"),
         tile("Calls next 7 days", String(cc.next7), `${cc.toWrite} to write · ${cc.toSend} to send`)),
+      whosOutCard(people, pc, wk),
       el("div", { class: "row" },
         card("This week by person", "Solid: Research · light: own categories",
           legend([["Research", "#c8ccd6"], ["Own categories", "rgba(200,204,214,0.38)"]]),
@@ -1460,7 +1489,7 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
     const weekdayAvg = rows.map((r) => ({ name: r.name, color: r.color, values: r.s.byWeekday.map((m, i) => (range.weekdays[i] ? m / range.weekdays[i] / 60 : 0)) }));
     const callsBy = rows.map((r) => ({ name: r.name, color: r.color, values: r.c.byBucket }));
     const personLegend = legend(rows.map((r) => [r.name, r.color]));
-    page.replaceChildren(
+    render(page, 
       pageHead("Analytics", `${range.label} · ${range.span}. Everyone in the folder “${state.team.name}”.`, periodPicker(reload)),
       el("div", { class: "tiles" },
         tile("Team hours", hdec(total), `${active} of ${rows.length} people logged time`),
@@ -1495,7 +1524,8 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
           el("tbody", {}, rows.map((r) => el("tr", {}, el("td", { class: "strong" }, dot(r.color), r.name), el("td", { class: "num" }, String(r.s.days)),
             range.monthly ? null : el("td", { class: "num" }, `${r.s.weeksLogged} of ${range.buckets.length}`),
             el("td", { class: "num" }, r.s.days ? hm(r.s.total / r.s.days) : "–"), el("td", { class: "num muted" }, share(r.s.timer, r.s.total))))))),
-          el("p", { class: "faint small" }, "Timer: share of hours logged with the time clock rather than typed in."))));
+          el("p", { class: "faint small" }, "Timer: share of hours logged with the time clock rather than typed in."))),
+      leaveTable(rows, range));
   }
   function personalAnalytics(page, range, reload) {
     const d = state.data, catNames = new Map(d.categories.map((c) => [c.id, c.name])), cc = categoryColors(d);
@@ -1508,7 +1538,7 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
     });
     const weekdayAvg = perCat.map((x) => ({ name: x.name, color: x.color, values: x.weekday.map((m, i) => (range.weekdays[i] ? m / range.weekdays[i] / 60 : 0)) }));
     const callsSeries = [{ name: "Calls attended", color: PERSON_COLORS[0], values: c.byBucket }];
-    page.replaceChildren(
+    render(page, 
       pageHead("Analytics", `${range.label} · ${range.span}. Your own hours and earnings calls.`, periodPicker(reload)),
       el("div", { class: "tiles" },
         tile("My hours", hdec(s.total), `${s.days} ${s.days === 1 ? "day" : "days"} logged`),
@@ -1525,7 +1555,8 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
       el("div", { class: "row" },
         perCat.length ? vizCard("Average day", "Average hours on each weekday", { legend: perCat.length > 1 ? legend(perCat.map((x) => [x.name, x.color])) : null, chart: columnChart(DOW, weekdayAvg), labels: DOW, series: weekdayAvg, rowHead: "Day" }) : null,
         vizCard("Earnings calls attended", range.monthly ? "Per month, by call date" : "Per week, by call date",
-          { chart: columnChart(labels, callsSeries, { unit: "calls", fmt: (v) => String(Math.round(v)), whole: true }), labels, series: callsSeries, unit: "calls", fmt: (v) => String(Math.round(v)), rowHead: range.monthly ? "Month" : "Week" })));
+          { chart: columnChart(labels, callsSeries, { unit: "calls", fmt: (v) => String(Math.round(v)), whole: true }), labels, series: callsSeries, unit: "calls", fmt: (v) => String(Math.round(v)), rowHead: range.monthly ? "Month" : "Week" })),
+      leaveTable([{ name: d.person, d }], range));
   }
   /* Earnings calls attended by each person: this month, this quarter and all time, plus what's still to do. */
   function teamCallsCard(people, pc) {
@@ -1549,6 +1580,193 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
             el("td", { class: "num" }, String(sum((r) => r.all.attended))), el("td", { class: "num" }, String(sum((r) => r.all.sent))), el("td", { class: "num" }, String(sum((r) => r.toWrite))))))));
   }
 
+  // ------------------------------------------------------------------ leave and exit passes
+  /* Annual leave and sick days are date ranges counted in working days (Monday to Friday), with a half-day option for
+     a single day. An exit pass is one day: came in late or left early, at a time, with optional hours away. */
+  const LEAVE = { annual: "Annual leave", sick: "Sick day", exit: "Exit pass" };
+  const EXIT = { late: "Came in late", early: "Left early" };
+  const isWorkday = (d) => d.getDay() !== 0 && d.getDay() !== 6;
+  function workingDays(a, from = a.from, to = a.to) {
+    if (a.type === "exit") return 0;
+    const s = a.from > from ? a.from : from, e = a.to < to ? a.to : to;
+    if (s > e) return 0;
+    let n = 0;
+    for (let d = parseIso(s); iso(d) <= e; d = addDays(d, 1)) if (isWorkday(d)) n++;
+    return a.half ? Math.min(n, 0.5) : n;
+  }
+  const fmtDays = (n) => `${Number.isInteger(n) ? n : n.toFixed(1)} ${n === 1 ? "day" : "days"}`;
+  const absencesOn = (d, day) => (d.absences || []).filter((a) => a.from <= day && day <= a.to);
+  function leaveLabel(a) {
+    if (a.type === "exit") return `${a.exit === "late" ? "Late in" : "Left"}${a.time ? " " + a.time : ""}`;
+    if (a.half) return a.type === "annual" ? "Half-day leave" : "Half-day sick";
+    return a.type === "annual" ? "Annual leave" : "Sick day";
+  }
+  const leavePill = (a, long) => el("span", { class: `pill ${a.type === "annual" ? "leave" : a.type}` }, long && a.type === "exit" ? "Exit pass" : leaveLabel(a));
+  function leaveWhen(a) {
+    const f = parseIso(a.from), t = parseIso(a.to);
+    if (a.type === "exit") return `${fmtDow(f)}, ${EXIT[a.exit].toLowerCase()}${a.time ? " at " + a.time : ""}`;
+    return a.from === a.to ? fmtDow(f) : `${fmtDow(f)} – ${fmtDow(t)}`;
+  }
+  function leaveStats(absences, from, to) {
+    const s = { annual: 0, sick: 0, exits: 0, hoursAway: 0 };
+    for (const a of absences || []) {
+      if (a.type === "annual") s.annual += workingDays(a, from, to);
+      else if (a.type === "sick") s.sick += workingDays(a, from, to);
+      else if (a.from >= from && a.from <= to) { s.exits++; s.hoursAway += Number(a.hours) || 0; }
+    }
+    return s;
+  }
+  function absencesCsv(list) {
+    const rows = [["Person", "Type", "From", "To", "Working days", "Half day", "Exit pass", "Time", "Hours away", "Note", "Year", "Month"]];
+    for (const d of list) for (const a of [...(d.absences || [])].sort((x, y) => x.from.localeCompare(y.from))) {
+      const f = parseIso(a.from);
+      rows.push([d.person, LEAVE[a.type], a.from, a.to, a.type === "exit" ? "" : workingDays(a), a.type === "exit" ? "" : !!a.half,
+        a.type === "exit" ? EXIT[a.exit] : "", a.time || "", a.type === "exit" && a.hours ? Number(a.hours) : "", a.note || "", f.getFullYear(), `${f.getFullYear()}-${pad(f.getMonth() + 1)}-01`]);
+    }
+    return toCsv(rows);
+  }
+
+  async function viewLeave(page) {
+    await refreshMine();
+    const d = state.data, reload = () => viewLeave(page).catch((e) => toast(e.message, true));
+    const now = today(), t = iso(now), yr = now.getFullYear();
+    const y0 = `${yr}-01-01`, y1 = `${yr}-12-31`, m0 = iso(new Date(yr, now.getMonth(), 1)), tomorrow = iso(addDays(now, 1));
+    const taken = leaveStats(d.absences, y0, t), booked = leaveStats(d.absences, tomorrow, y1), month = leaveStats(d.absences, m0, t);
+    const allow = d.leaveAllowance;
+    const next = d.absences.filter((a) => a.type === "annual" && a.to >= t).sort((a, b) => a.from.localeCompare(b.from))[0];
+    const type = state.leaveType || "annual";
+
+    // ---- add form
+    const err = el("p", { class: "form-err", role: "alert", hidden: true });
+    const from = el("input", { type: "date", id: "leave-from", value: t }), to = el("input", { type: "date", id: "leave-to", value: t });
+    const half = el("input", { type: "checkbox", class: "check", id: "leave-half" });
+    const note = el("input", { type: "text", maxlength: 200, id: "leave-note", placeholder: type === "exit" ? "e.g. Doctor's appointment" : "Optional" });
+    const time = el("input", { type: "time", id: "exit-time", value: type === "exit" ? "" : null });
+    const hours = el("input", { type: "number", min: 0, max: 12, step: 0.25, id: "exit-hours", placeholder: "Optional" });
+    let exitKind = state.exitKind || "late";
+    const syncHalf = () => { const single = !to.value || to.value === from.value; half.disabled = !single; if (!single) half.checked = false; };
+    from.addEventListener("change", () => { if (!to.value || to.value < from.value) to.value = from.value; syncHalf(); });
+    to.addEventListener("change", syncHalf);
+    const typePick = el("div", { class: "seg", role: "group", "aria-label": "What to add" }, Object.entries(LEAVE).map(([k, label]) =>
+      el("button", { type: "button", "aria-pressed": String(type === k), on: { click: () => { state.leaveType = k; reload(); } } }, label)));
+    const exitPick = chipGroup(Object.entries(EXIT).map(([id, name]) => ({ id, name })), exitKind, (id) => { exitKind = id; state.exitKind = id; });
+    const form = el("form", { class: "form" }, typePick,
+      type === "exit"
+        ? el("div", { class: "form" }, el("div", { class: "field" }, el("span", { class: "field-label" }, "Which"), exitPick),
+            el("div", { class: "form-row" }, field("Date", from), field("Time", time), field("Hours away", hours)))
+        : el("div", { class: "form-row" }, field("From", from), field("To", to),
+            el("label", { class: "field", style: "align-self:end;display:flex;gap:10px;align-items:center;min-height:38px" }, half, el("span", {}, "Half day"))),
+      field("Note", note), err,
+      el("div", { class: "actions" }, el("button", { type: "submit", class: "btn primary" }, `Add ${LEAVE[type].toLowerCase()}`)));
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault(); err.hidden = true;
+      const fail = (m) => { err.textContent = m; err.hidden = false; };
+      const a = { id: uid(), type, from: from.value, to: type === "exit" ? from.value : (to.value || from.value), note: note.value.trim().slice(0, 200), at: Date.now() };
+      if (!a.from) return fail("Pick the date.");
+      if (a.to < a.from) return fail("The end date is before the start date.");
+      if ((parseIso(a.to) - parseIso(a.from)) / 864e5 > 120) return fail("That's more than four months. Split it into shorter periods.");
+      if (type === "exit") {
+        a.exit = exitKind; a.time = time.value || ""; a.hours = hours.value === "" ? null : Math.max(0, Math.min(12, Number(hours.value)));
+        if (!isWorkday(parseIso(a.from))) return fail("That date is a weekend.");
+        const off = absencesOn(d, a.from).find((x) => x.type !== "exit" && !x.half);
+        if (off) return fail(`${fmtDow(parseIso(a.from))} is already ${off.type === "annual" ? "annual leave" : "a sick day"}.`);
+      } else {
+        a.half = half.checked && a.from === a.to;
+        if (workingDays(a) === 0) return fail("Those dates are all weekend days.");
+        const clash = d.absences.find((x) => x.type !== "exit" && x.from <= a.to && a.from <= x.to);
+        if (clash) return fail(`You already have ${leaveLabel(clash).toLowerCase()} on ${leaveWhen(clash)}.`);
+      }
+      try {
+        await mutate((x) => { x.absences = x.absences || []; x.absences.push(a); });
+        toast(type === "exit" ? `Added exit pass: ${leaveWhen(a)}` : `Added ${leaveLabel(a).toLowerCase()}: ${leaveWhen(a)} (${fmtDays(workingDays(a))})`);
+        reload();
+      } catch (x) { fail(x.message); }
+    });
+
+    // ---- allowance
+    const allowIn = el("input", { type: "number", min: 0, max: 60, step: 0.5, id: "leave-allowance", value: allow ?? "", placeholder: "e.g. 30" });
+    allowIn.addEventListener("change", async () => {
+      const v = allowIn.value === "" ? null : Math.max(0, Math.min(60, Number(allowIn.value)));
+      try { await mutate((x) => { x.leaveAllowance = v; }); toast(v === null ? "Allowance cleared" : `Allowance set to ${fmtDays(v)} a year`); reload(); } catch (x) { toast(x.message, true); }
+    });
+
+    // ---- list
+    const all = [...d.absences].sort((a, b) => b.from.localeCompare(a.from) || (b.at || 0) - (a.at || 0));
+    const shown = state.showOldLeave ? all : all.filter((a) => a.to >= y0);
+    const older = all.length - all.filter((a) => a.to >= y0).length;
+    const left = allow === null || allow === undefined ? null : allow - taken.annual - booked.annual;
+    render(page, 
+      pageHead("Leave & passes", "Annual leave, sick days and exit passes, so it's clear which days you weren't in the office. Working days are Monday to Friday."),
+      el("div", { class: "tiles" },
+        tile("Annual leave taken", fmtDays(taken.annual), booked.annual ? `This year · ${booked.annual} more booked` : "This year"),
+        tile("Annual leave left", left === null ? "–" : fmtDays(left), left === null ? "Set your allowance below" : `Of ${allow} a year, incl. booked`),
+        tile("Next annual leave", next ? (next.from <= t ? "Now" : fmtDay(parseIso(next.from))) : "–", next ? `${fmtDays(workingDays(next))}${next.to !== next.from ? `, to ${fmtDay(parseIso(next.to))}` : ""}` : "Nothing booked", true),
+        tile("Sick days", fmtDays(taken.sick), "This year"),
+        tile("Exit passes", String(month.exits), `This month · ${taken.exits} this year`),
+        tile("Time away on passes", month.hoursAway ? hm(month.hoursAway * 60) : "–", "This month")),
+      el("div", { class: "row wide-left" },
+        card("Add", type === "exit" ? "For a day you came in late or left early" : "Pick the first and last day; weekends aren't counted", form),
+        card("Annual leave allowance", "Your days per year, used for “Annual leave left”", field("Days per year", allowIn))),
+      card("Your leave and exit passes", `${all.length} in total`,
+        older ? el("label", { class: "muted small", style: "display:flex;gap:8px;align-items:center;cursor:pointer" },
+          el("input", { type: "checkbox", class: "check", checked: state.showOldLeave, on: { change: (e) => { state.showOldLeave = e.target.checked; reload(); } } }), `Show earlier years (${older})`) : null,
+        shown.length ? el("div", { class: "scroll" }, el("table", { class: "tbl" },
+          el("thead", {}, el("tr", {}, el("th", {}, "Type"), el("th", {}, "When"), el("th", { class: "num" }, "Days or hours"), el("th", {}, "Note"), el("th", {}, ""))),
+          el("tbody", {}, shown.map((a) => el("tr", { class: a.to < t ? "" : "upcoming" },
+            el("td", {}, leavePill(a, true)), el("td", {}, leaveWhen(a), a.from > t ? el("span", { class: "faint small" }, "  upcoming") : null),
+            el("td", { class: "num" }, a.type === "exit" ? (a.hours ? `${fmtH(a.hours)} h away` : "–") : fmtDays(workingDays(a))),
+            el("td", { class: "muted" }, a.note || ""),
+            el("td", { class: "num" }, armButton("Delete", "Confirm", async () => { await mutate((x) => { x.absences = (x.absences || []).filter((y) => y.id !== a.id); }); toast("Removed"); reload(); }))))))) :
+          el("div", { class: "empty" }, el("b", {}, "Nothing recorded yet."), el("span", {}, "Add annual leave, a sick day or an exit pass above."))));
+  }
+
+  /* My week: one cell per day saying whether you were in the office. */
+  function attendanceCard(d, wk) {
+    const t = iso(today());
+    const cells = DOW.map((name, i) => {
+      const day = addDays(wk, i), key = iso(day), abs = absencesOn(d, key);
+      const weekend = !isWorkday(day);
+      const status = abs.length ? abs.map((a) => leavePill(a)) : weekend ? el("span", { class: "faint small" }, "Weekend")
+        : key <= t ? el("span", { class: "muted small" }, "In office") : el("span", { class: "faint small" }, "–");
+      return el("div", { class: "att" + (weekend ? " weekend" : "") + (key === t ? " today" : "") }, el("div", { class: "d" }, `${name} ${day.getDate()}`), el("div", { class: "s" }, status));
+    });
+    const s = leaveStats(d.absences, iso(wk), iso(addDays(wk, 6)));
+    const bits = [s.annual ? `${fmtDays(s.annual)} annual leave` : null, s.sick ? `${fmtDays(s.sick)} sick` : null, s.exits ? `${s.exits} exit ${s.exits === 1 ? "pass" : "passes"}` : null].filter(Boolean);
+    return card("Office attendance", bits.length ? bits.join(" · ") : "No leave or exit passes this week",
+      el("div", { class: "attgrid" }, cells),
+      el("p", { class: "small" }, el("a", { href: "#/leave" }, "Add leave, a sick day or an exit pass")));
+  }
+
+  /* Team page: who was or will be out of the office this week, and what's coming up. */
+  function whosOutCard(people, pc, wk) {
+    const t = iso(today()), in30 = iso(addDays(today(), 30));
+    const rows = people.map(({ data: d }) => ({ name: d.person, color: pc.get(d.person) || OTHER_COLOR, d })).sort((a, b) => a.name.localeCompare(b.name));
+    const outToday = rows.map((r) => ({ r, abs: absencesOn(r.d, t) })).filter((x) => x.abs.length);
+    const upcoming = rows.flatMap((r) => (r.d.absences || []).filter((a) => a.type !== "exit" && a.from > iso(addDays(wk, 6)) && a.from <= in30).map((a) => ({ r, a })))
+      .sort((x, y) => x.a.from.localeCompare(y.a.from));
+    const note = outToday.length ? "Out of the office today: " + outToday.map((x) => `${x.r.name} (${x.abs.map(leaveLabel).join(", ").toLowerCase()})`).join(", ") : "Everyone is in today";
+    return card("Who's out", note,
+      el("div", { class: "scroll" }, el("table", { class: "tbl outgrid" },
+        el("thead", {}, el("tr", {}, el("th", {}, "Person"), DOW.map((n, i) => { const day = addDays(wk, i); return el("th", { class: (isWorkday(day) ? "" : "weekend") + (iso(day) === t ? " today" : "") }, `${n} ${day.getDate()}`); }))),
+        el("tbody", {}, rows.map((r) => el("tr", {}, el("td", { class: "strong" }, dot(r.color), r.name),
+          DOW.map((_, i) => { const day = addDays(wk, i), abs = absencesOn(r.d, iso(day)); return el("td", { class: (isWorkday(day) ? "" : "weekend") + (iso(day) === t ? " today" : "") }, abs.map((a) => leavePill(a))); })))))),
+      upcoming.length ? el("div", { class: "form" }, el("span", { class: "field-label" }, "Coming up in the next 30 days"),
+        el("div", { class: "scroll" }, el("table", { class: "tbl compact" }, el("tbody", {}, upcoming.map(({ r, a }) =>
+          el("tr", {}, el("td", { class: "strong" }, dot(r.color), r.name), el("td", {}, leavePill(a)), el("td", {}, leaveWhen(a)), el("td", { class: "num muted" }, fmtDays(workingDays(a))))))))) : null);
+  }
+
+  /* Analytics: leave and passes per person in the chosen period (up to today). */
+  function leaveTable(rows, range) {
+    const s = rows.map((r) => ({ ...r, l: leaveStats(r.d.absences, range.from, range.end) }));
+    const sum = (k) => s.reduce((a, r) => a + r.l[k], 0);
+    return card("Leave & exit passes", `${range.label}, up to today · working days`, el("div", { class: "scroll" }, el("table", { class: "tbl" },
+      el("thead", {}, el("tr", {}, el("th", {}, rows.length > 1 ? "Person" : ""), el("th", { class: "num" }, "Annual leave"), el("th", { class: "num" }, "Sick days"), el("th", { class: "num" }, "Exit passes"), el("th", { class: "num" }, "Time away on passes"))),
+      el("tbody", {}, s.map((r) => el("tr", {}, el("td", { class: "strong" }, r.color ? dot(r.color) : null, r.name), el("td", { class: "num" }, fmtDays(r.l.annual)), el("td", { class: "num" }, fmtDays(r.l.sick)),
+        el("td", { class: "num" }, String(r.l.exits)), el("td", { class: "num muted" }, r.l.hoursAway ? hm(r.l.hoursAway * 60) : "–"))),
+        rows.length > 1 ? el("tr", { class: "total" }, el("td", {}, "Team"), el("td", { class: "num" }, fmtDays(sum("annual"))), el("td", { class: "num" }, fmtDays(sum("sick"))),
+          el("td", { class: "num" }, String(sum("exits"))), el("td", { class: "num" }, sum("hoursAway") ? hm(sum("hoursAway") * 60) : "–")) : null))));
+  }
+
   // ------------------------------------------------------------------ Excel
   function download(name, text) {
     const url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
@@ -1558,14 +1776,15 @@ const ICON_URI = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%
   function viewExcel(page) {
     const pathIn = el("input", { type: "text", value: state.excelPath, id: "excel-path", "aria-label": "Path of the Timesheets folder" });
     const code = el("pre", { class: "code" });
-    const which = el("select", { id: "excel-which", "aria-label": "Which data" }, el("option", { value: "entries" }, "Time entries"), el("option", { value: "calls" }, "Earnings calls"));
+    const which = el("select", { id: "excel-which", "aria-label": "Which data" }, el("option", { value: "entries" }, "Time entries"), el("option", { value: "calls" }, "Earnings calls"), el("option", { value: "leave" }, "Leave & exit passes"));
     which.value = state.excelWhich || "entries";
     const TYPES = {
       entries: `{{"Date", type date}, {"Hours", type number}, {"Minutes", Int64.Type}, {"Week start", type date},
         {"ISO year", Int64.Type}, {"ISO week", Int64.Type}, {"Month", type date}, {"Year", Int64.Type}, {"Shared category", type logical}}`,
       calls: `{{"Earnings call date", type date}, {"Joined call", type logical}, {"Note written", type logical}, {"Note sent", type date}}`,
+      leave: `{{"From", type date}, {"To", type date}, {"Working days", type number}, {"Half day", type logical}, {"Hours away", type number}, {"Year", Int64.Type}, {"Month", type date}}`,
     };
-    const BLANKS = { entries: `{"Note"}`, calls: `{"Earnings call date", "Note sent"}` };
+    const BLANKS = { entries: `{"Note"}`, calls: `{"Earnings call date", "Note sent"}`, leave: `{"Working days", "Half day", "Exit pass", "Time", "Hours away", "Note"}` };
     const mcode = () => `let
     Source = Folder.Files("${pathIn.value.trim().replace(/"/g, '""')}"),
     Files = Table.SelectRows(Source, each [Name] = "${which.value}.csv"),
@@ -1582,21 +1801,23 @@ in
       catch { const r = document.createRange(); r.selectNodeContents(code); getSelection().removeAllRanges(); getSelection().addRange(r); toast("Selected. Press Ctrl+C to copy"); } } } }, icon("copy"), "Copy query");
     const dl = [], dlTeam = [];
     if (state.data) dl.push(el("button", { type: "button", class: "btn", on: { click: () => download(`time-entries-${state.data.person}.csv`, entriesCsv([state.data])) } }, icon("download"), "My time entries (CSV)"),
-      el("button", { type: "button", class: "btn", on: { click: () => download(`earnings-calls-${state.data.person}.csv`, callsCsv([state.data])) } }, icon("download"), "My earnings calls (CSV)"));
+      el("button", { type: "button", class: "btn", on: { click: () => download(`earnings-calls-${state.data.person}.csv`, callsCsv([state.data])) } }, icon("download"), "My earnings calls (CSV)"),
+      el("button", { type: "button", class: "btn", on: { click: () => download(`leave-${state.data.person}.csv`, absencesCsv([state.data])) } }, icon("download"), "My leave & passes (CSV)"));
     if (state.people) dlTeam.push(el("button", { type: "button", class: "btn primary", on: { click: () => download("time-entries-team.csv", entriesCsv(state.people.map((p) => p.data))) } }, icon("download"), "Team time entries (CSV)"),
-      el("button", { type: "button", class: "btn", on: { click: () => download("earnings-calls-team.csv", callsCsv(state.people.map((p) => p.data))) } }, icon("download"), "Team earnings calls (CSV)"));
-    page.replaceChildren(pageHead("Excel", "Every save also writes entries.csv and calls.csv into the person's folder, so Excel can read them directly."),
+      el("button", { type: "button", class: "btn", on: { click: () => download("earnings-calls-team.csv", callsCsv(state.people.map((p) => p.data))) } }, icon("download"), "Team earnings calls (CSV)"),
+      el("button", { type: "button", class: "btn", on: { click: () => download("leave-team.csv", absencesCsv(state.people.map((p) => p.data))) } }, icon("download"), "Team leave & passes (CSV)"));
+    render(page, pageHead("Excel", "Every save also writes entries.csv, calls.csv and leave.csv into the person's folder, so Excel can read them directly."),
       el("div", { class: "row" },
         card("Your own data", null, el("ol", { class: "steps" },
           el("li", {}, "In Excel: ", el("b", {}, "Data > Get Data > From File > From Text/CSV"), "."),
-          el("li", {}, "Pick ", el("b", {}, "entries.csv"), " (or ", el("b", {}, "calls.csv"), ") in your folder, then click ", el("b", {}, "Load"), "."),
+          el("li", {}, "Pick ", el("b", {}, "entries.csv"), " (or ", el("b", {}, "calls.csv"), ", or ", el("b", {}, "leave.csv"), ") in your folder, then click ", el("b", {}, "Load"), "."),
           el("li", {}, el("b", {}, "Data > Refresh All"), " picks up your latest saves.")),
           dl.length ? el("div", { class: "actions" }, dl) : null),
         card("Everyone (team lead)", "One table for the whole team", el("ol", { class: "steps" },
           el("li", {}, "In Excel: ", el("b", {}, "Data > Get Data > From File > From Folder"), " and pick the Timesheets folder."),
           el("li", {}, "Click ", el("b", {}, "Transform Data"), ", filter the Name column to ", el("b", {}, "entries.csv"), ", then click the double-arrow on the Content column to combine."),
           el("li", {}, "Click ", el("b", {}, "Close & Load"), ". ", el("b", {}, "Data > Refresh All"), " updates it with everyone's latest saves."),
-          el("li", {}, "Do the same with ", el("b", {}, "calls.csv"), " for earnings calls.")),
+          el("li", {}, "Do the same with ", el("b", {}, "calls.csv"), " for earnings calls and ", el("b", {}, "leave.csv"), " for leave and exit passes.")),
           dlTeam.length ? el("div", { class: "actions" }, dlTeam) : null)),
       card("Or paste this query", "Data > Get Data > From Other Sources > Blank Query > Advanced Editor",
         el("div", { class: "form-row", style: "grid-template-columns:minmax(0,3fr) minmax(150px,1fr)" },
@@ -1605,17 +1826,17 @@ in
   }
 
   // ------------------------------------------------------------------ routing
-  const VIEWS = { week: viewWeek, calls: viewCalls, categories: viewCategories, team: viewTeam, analytics: viewAnalytics, excel: viewExcel };
+  const VIEWS = { week: viewWeek, calls: viewCalls, categories: viewCategories, team: viewTeam, analytics: viewAnalytics, leave: viewLeave, excel: viewExcel };
   function route() {
     clearInterval(state.tick);
     window.ondragover = window.ondrop = window.ondragleave = null;
     if (!state.me && !state.team) return viewStart();
     let view = (location.hash.match(/^#\/(\w+)/) || [])[1];
-    const mineViews = ["week", "calls", "categories"];
+    const mineViews = ["week", "calls", "categories", "leave"];
     if (!VIEWS[view] || (mineViews.includes(view) && !state.me) || (view === "team" && !state.team)) view = state.me ? "week" : "team";
     state.view = view;
     const page = shell(view);
-    Promise.resolve(VIEWS[view](page)).catch((e) => page.replaceChildren(el("div", { class: "empty" }, el("b", {}, "This page didn't load."), el("span", {}, friendly(e)))));
+    Promise.resolve(VIEWS[view](page)).catch((e) => render(page, el("div", { class: "empty" }, el("b", {}, "This page didn't load."), el("span", {}, friendly(e)))));
   }
   window.addEventListener("hashchange", () => { state.editing = null; route(); });
   // Hook for automated tests: lets a test harness hand in folders without the browser's folder picker.
